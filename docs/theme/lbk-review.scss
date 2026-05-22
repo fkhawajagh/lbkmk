@@ -2,25 +2,25 @@
 
 // ============================================================
 //  Little Big Kids — Review Document Theme
-//  Aesthetic: editorial sans-serif on warm paper, with restrained
-//             serif used only for the document title + section numbers.
+//  Aesthetic: dark Tokyo Night with editorial restraint.
 //  Typography: Plus Jakarta Sans (display) + Public Sans (body)
 //              + IBM Plex Mono (code) + Fraunces (sparing serif accent).
 // ============================================================
 
-// --- Palette ----------------------------------------------------------------
+// --- Palette (Tokyo Night) --------------------------------------------------
 
-$paper:           #FAF7F2;   // cream background — never pure white
-$paper-deep:      #F2EDE3;   // slightly darker for inset blocks
-$paper-edge:      #E8E1D3;   // subtle borders
-$ink:             #2A2522;   // deep warm-brown body text
-$ink-soft:        #4A4239;   // secondary text
-$ink-quiet:       #6B6157;   // tertiary, captions
-$sienna:          #C95F3F;   // primary accent — links, section numbers
-$sienna-deep:     #A14A30;   // hover state for sienna
-$forest:          #4A6B5C;   // secondary accent
-$honey:           #D4A574;   // tertiary, highlights
-$honey-light:     #EAD4B2;   // soft warm highlight backgrounds
+$bg-base:      #1A1B26;   // deep navy — page background
+$bg-surface:   #1F2335;   // slightly lighter — code blocks, diagram frames
+$bg-edge:      #292E42;   // borders, dividers
+$fg-text:      #C0CAF5;   // primary body text
+$fg-soft:      #A9B1D6;   // secondary text
+$fg-quiet:     #565F89;   // captions, faint metadata
+$accent:       #7AA2F7;   // primary accent — links, section numbers, primary edges
+$accent-hover: #BB9AF7;   // hover state — lavender
+$accent-cyan:  #7DCFFF;   // secondary accent
+$accent-warm:  #E0AF68;   // warm highlight
+$accent-coral: #F7768E;   // sparing — for code, attention
+$accent-green: #9ECE6A;   // sparing — for success cues
 
 // --- Type stack -------------------------------------------------------------
 
@@ -31,10 +31,10 @@ $ff-accent:   "Fraunces", Georgia, serif;   // used only on title + section numb
 
 // --- Bootstrap (Quarto's underlying variables) ------------------------------
 
-$body-bg:                $paper;
-$body-color:             $ink;
-$link-color:             $sienna;
-$link-hover-color:       $sienna-deep;
+$body-bg:                $bg-base;
+$body-color:             $fg-text;
+$link-color:             $accent;
+$link-hover-color:       $accent-hover;
 $link-decoration:        none;
 $link-hover-decoration:  underline;
 
@@ -42,48 +42,59 @@ $font-family-sans-serif: $ff-body;
 $font-family-monospace:  $ff-mono;
 $headings-font-family:   $ff-display;
 $headings-font-weight:   600;
-$headings-color:         $ink;
+$headings-color:         $fg-text;
 $headings-line-height:   1.2;
 
 $font-size-base:         1.0625rem;   // 17px
 $line-height-base:       1.6;
 
-$border-color:           $paper-edge;
-$table-border-color:     $paper-edge;
-$table-striped-bg:       rgba($honey, 0.05);
-$code-color:             $sienna-deep;
+$border-color:           $bg-edge;
+$table-border-color:     $bg-edge;
+$table-striped-bg:       rgba($accent, 0.05);
+$code-color:             $accent-coral;
 
 $blockquote-font-size:   1rem;
-$blockquote-border-color: $sienna;
+$blockquote-border-color: $accent;
 
 $container-max-widths: (sm: 540px, md: 720px, lg: 760px, xl: 800px, xxl: 820px);
 
 
 /*-- scss:rules --*/
 
-// Fonts are loaded via a <link> tag in docs/_includes/mermaid-loader.html
-// (pandoc's embed-resources follows <link rel="stylesheet"> reliably,
-// but does not follow CSS @import chains).
+// Fonts and the Mermaid runtime are loaded via a <link> + <script> in
+// docs/_includes/mermaid-loader.html (pandoc embed-resources follows
+// <link rel="stylesheet"> reliably; it does not follow CSS @import chains).
 
 
 // --- Page-level atmosphere --------------------------------------------------
 
 html {
-  background-color: $paper;
+  background-color: $bg-base;
   background-image:
-    // a barely-there warm vignette to evoke paper depth
-    radial-gradient(ellipse at top, rgba($honey, 0.06), transparent 60%),
-    radial-gradient(ellipse at bottom, rgba($sienna, 0.03), transparent 50%);
+    // very subtle warm-blue glow near top and lavender hint at bottom
+    radial-gradient(ellipse at top, rgba($accent, 0.06), transparent 55%),
+    radial-gradient(ellipse at bottom, rgba($accent-hover, 0.04), transparent 50%);
   background-attachment: fixed;
 }
 
 body {
   font-family: $ff-body;
   font-feature-settings: "kern", "liga", "calt", "ss01" 1;
-  color: $ink;
+  color: $fg-text;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+// Force the navbar/sidebar Quarto adds to also use dark mode.
+.quarto-secondary-nav,
+.navbar,
+.sidebar,
+.sidebar-navigation,
+.quarto-title-banner {
+  background-color: $bg-base !important;
+  color: $fg-text !important;
+  border-color: $bg-edge !important;
 }
 
 
@@ -93,11 +104,11 @@ body {
 .title-block-header,
 #title-block-header {
   padding: 3.5rem 0 2.25rem 0;
-  border-bottom: 1px solid $paper-edge;
+  border-bottom: 1px solid $bg-edge;
   margin-bottom: 3rem;
 
-  // Sparing serif: the document title is the one place the editorial
-  // accent shows up at scale. Sets a tone before the sans takes over.
+  // Sparing serif (1 of 2): the document title is the one prominent place
+  // the editorial accent appears.
   .title {
     font-family: $ff-accent;
     font-weight: 600;
@@ -105,7 +116,7 @@ body {
     font-variation-settings: "opsz" 96, "SOFT" 50;
     letter-spacing: -0.015em;
     line-height: 1.08;
-    color: $ink;
+    color: $fg-text;
     margin-bottom: 0.75rem;
   }
 
@@ -114,7 +125,7 @@ body {
     font-style: italic;
     font-weight: 400;
     font-size: 1.2rem;
-    color: $ink-soft;
+    color: $fg-soft;
     line-height: 1.4;
     max-width: 60ch;
   }
@@ -125,10 +136,10 @@ body {
     font-size: 0.78rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: $ink-quiet;
+    color: $fg-quiet;
 
     .quarto-title-meta-heading {
-      color: $sienna;
+      color: $accent;
       font-weight: 500;
     }
   }
@@ -139,7 +150,7 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: $ff-display;
-  color: $ink;
+  color: $fg-text;
   margin-top: 2.6rem;
   margin-bottom: 0.9rem;
   font-feature-settings: "kern", "liga", "calt";
@@ -151,7 +162,7 @@ h1 {
   letter-spacing: -0.018em;
   margin-top: 3.2rem;
   padding-bottom: 0.4rem;
-  border-bottom: 1px solid $paper-edge;
+  border-bottom: 1px solid $bg-edge;
 }
 
 h2 {
@@ -164,23 +175,21 @@ h3 {
   font-size: 1.18rem;
   font-weight: 600;
   letter-spacing: -0.005em;
-  color: $ink-soft;
+  color: $fg-soft;
 }
 
 h4 {
   font-size: 1.02rem;
   font-weight: 600;
-  color: $ink-soft;
-  text-transform: none;
+  color: $fg-soft;
 }
 
-// Section number prefix: the second (and only other) place the editorial
-// serif appears. Tiny, recurring detail — sets it apart from the heading text.
+// Sparing serif (2 of 2): tiny recurring detail on auto section numbers.
 .header-section-number {
   font-family: $ff-accent;
   font-feature-settings: "tnum" 1, "onum" 1;
   font-style: normal;
-  color: $sienna;
+  color: $accent;
   font-weight: 500;
   font-size: 0.82em;
   margin-right: 0.6em;
@@ -202,17 +211,16 @@ p {
   -webkit-hyphens: auto;
 }
 
-// First paragraph after each h1: subtle lead-in.
 h1 + p {
   font-size: 1.07rem;
-  color: $ink-soft;
+  color: $fg-soft;
 }
 
 
 // --- Links ------------------------------------------------------------------
 
 a {
-  color: $sienna;
+  color: $accent;
   text-decoration: none;
   background-image: linear-gradient(currentColor, currentColor);
   background-position: 0 100%;
@@ -222,7 +230,7 @@ a {
 }
 
 a:hover {
-  color: $sienna-deep;
+  color: $accent-hover;
   background-size: 100% 1px;
 }
 
@@ -232,17 +240,18 @@ a:hover {
 code {
   font-family: $ff-mono;
   font-size: 0.85em;
-  color: $sienna-deep;
-  background-color: rgba($sienna, 0.06);
-  padding: 0.1em 0.36em;
+  color: $accent-cyan;
+  background-color: $bg-edge;
+  border: 1px solid rgba($accent-cyan, 0.18);
+  padding: 0.08em 0.4em;
   border-radius: 3px;
-  font-feature-settings: "kern", "liga" 0;   // no ligatures in code
+  font-feature-settings: "kern", "liga" 0;
 }
 
 pre {
-  background-color: $paper-deep;
-  border: 1px solid $paper-edge;
-  border-left: 3px solid $sienna;
+  background-color: $bg-surface;
+  border: 1px solid $bg-edge;
+  border-left: 3px solid $accent;
   border-radius: 4px;
   padding: 1rem 1.25rem;
   margin: 1.5rem 0;
@@ -250,7 +259,7 @@ pre {
 
   code {
     background: none;
-    color: $ink;
+    color: $fg-text;
     font-size: 0.83rem;
     padding: 0;
     border-radius: 0;
@@ -266,15 +275,16 @@ table {
   font-size: 0.94rem;
   font-feature-settings: "tnum" 1;
   width: 100%;
+  color: $fg-text;
 
   thead {
     th {
       font-family: $ff-display;
       font-weight: 700;
-      color: $ink;
+      color: $fg-text;
       text-align: left;
       padding: 0.65rem 0.9rem;
-      border-bottom: 1.5px solid $ink;
+      border-bottom: 1.5px solid $accent;
       background-color: transparent;
       font-size: 0.9rem;
       letter-spacing: -0.005em;
@@ -283,17 +293,21 @@ table {
 
   tbody {
     tr {
-      border-bottom: 1px solid $paper-edge;
+      border-bottom: 1px solid $bg-edge;
 
       &:nth-child(even) {
-        background-color: rgba($honey, 0.05);
+        background-color: rgba($accent, 0.04);
+      }
+
+      &:hover {
+        background-color: rgba($accent, 0.08);
       }
     }
 
     td {
       padding: 0.6rem 0.9rem;
       vertical-align: top;
-      color: $ink-soft;
+      color: $fg-soft;
     }
   }
 }
@@ -302,18 +316,18 @@ table {
 // --- Block quotes -----------------------------------------------------------
 
 blockquote {
-  border-left: 2px solid $sienna;
+  border-left: 2px solid $accent;
   padding: 0.5rem 0 0.5rem 1.5rem;
   margin: 1.75rem 0;
   font-family: $ff-body;
   font-style: italic;
-  color: $ink-soft;
+  color: $fg-soft;
   font-size: 1rem;
   line-height: 1.55;
 
   p:last-child { margin-bottom: 0; }
 
-  strong { font-style: normal; color: $ink; }
+  strong { font-style: normal; color: $fg-text; }
 }
 
 
@@ -325,15 +339,14 @@ figure.figure,
 .mermaid,
 div.mermaid,
 pre.mermaid {
-  background-color: $paper-deep;
-  border: 1px solid $paper-edge;
+  background-color: $bg-surface;
+  border: 1px solid $bg-edge;
   border-radius: 4px;
   padding: 1.75rem 1.5rem;
   margin: 2rem 0;
   overflow-x: auto;
   position: relative;
 
-  // Subtle inset top-line to evoke a plate or figure
   &::before {
     content: "";
     position: absolute;
@@ -341,11 +354,19 @@ pre.mermaid {
     left: 1.5rem;
     right: 1.5rem;
     height: 1px;
-    background: linear-gradient(to right, transparent, $sienna 50%, transparent);
-    opacity: 0.5;
+    background: linear-gradient(to right, transparent, $accent 50%, transparent);
+    opacity: 0.45;
   }
 
   svg { display: block; margin: 0 auto; max-width: 100%; }
+}
+
+// Until mermaid replaces the pre with SVG, hide the raw text so users
+// don't briefly see the diagram source flash on slow paint.
+pre.mermaid:not(:has(svg)) {
+  color: $fg-quiet;
+  font-family: $ff-mono;
+  font-size: 0.82rem;
 }
 
 figcaption,
@@ -354,7 +375,7 @@ figcaption,
   font-family: $ff-body;
   font-style: italic;
   font-size: 0.88rem;
-  color: $ink-quiet;
+  color: $fg-quiet;
   text-align: center;
   margin-top: 0.75rem;
 }
@@ -377,8 +398,8 @@ ul, ol {
   }
 }
 
-ul li::marker { color: $sienna; }
-ol li::marker { color: $sienna; font-weight: 600; }
+ul li::marker { color: $accent; }
+ol li::marker { color: $accent; font-weight: 600; }
 
 
 // --- TOC --------------------------------------------------------------------
@@ -387,9 +408,10 @@ ol li::marker { color: $sienna; font-weight: 600; }
   font-family: $ff-body;
   font-size: 0.88rem;
   line-height: 1.45;
+  background-color: transparent;
 
   a {
-    color: $ink-quiet;
+    color: $fg-quiet;
     text-decoration: none;
     background: none;
     transition: color 200ms ease, padding-left 200ms ease;
@@ -397,11 +419,11 @@ ol li::marker { color: $sienna; font-weight: 600; }
     padding: 0.18rem 0;
   }
 
-  a:hover { color: $sienna; padding-left: 0.2rem; }
-  a.active { color: $sienna-deep; font-weight: 500; }
+  a:hover { color: $accent; padding-left: 0.2rem; }
+  a.active { color: $accent-hover; font-weight: 500; }
 
   .toc-section-number {
-    color: $sienna;
+    color: $accent;
     font-family: $ff-accent;
     font-feature-settings: "tnum" 1, "onum" 1;
     font-size: 0.95em;
@@ -415,7 +437,7 @@ ol li::marker { color: $sienna; font-weight: 600; }
 hr {
   border: 0;
   height: 1px;
-  background: linear-gradient(to right, transparent, $paper-edge 20%, $paper-edge 80%, transparent);
+  background: linear-gradient(to right, transparent, $bg-edge 20%, $bg-edge 80%, transparent);
   margin: 2.5rem 0;
 }
 
@@ -424,16 +446,16 @@ hr {
 
 .footnote-ref, .footnote-back {
   font-feature-settings: "sups" 1;
-  color: $sienna;
+  color: $accent;
   text-decoration: none;
 }
 
 #footnotes, .footnotes {
   margin-top: 4rem;
   padding-top: 1.5rem;
-  border-top: 1px solid $paper-edge;
+  border-top: 1px solid $bg-edge;
   font-size: 0.9rem;
-  color: $ink-soft;
+  color: $fg-soft;
 }
 
 
@@ -449,21 +471,27 @@ main, .content {
 }
 
 
-// --- Print styles -----------------------------------------------------------
+// --- Selection -------------------------------------------------------------
+
+::selection {
+  background: rgba($accent, 0.35);
+  color: $fg-text;
+}
+
+
+// --- Print styles (force light) --------------------------------------------
 
 @media print {
   html, body {
-    background: white;
-    color: black;
+    background: white !important;
+    color: black !important;
   }
-  a {
-    color: $sienna-deep;
-    background: none;
-    text-decoration: underline;
-  }
+  a { color: $accent_hover; background: none; text-decoration: underline; }
   pre, blockquote, table, .cell-output-display, .mermaid, figure {
     page-break-inside: avoid;
+    background: #f5f5f5 !important;
+    color: black !important;
   }
-  h1, h2, h3 { page-break-after: avoid; }
+  h1, h2, h3 { page-break-after: avoid; color: black !important; }
   #TOC, .quarto-secondary-nav, nav { display: none !important; }
 }

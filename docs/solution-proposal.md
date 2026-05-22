@@ -55,13 +55,13 @@ flowchart LR
     end
 
     subgraph Phoenix["Phoenix LiveView (this repo)"]
-        API[REST API /api/v1]
+        API["REST API /api/v1"]
         CTX["Contexts:<br/>Ingest · Reconciliation ·<br/>Inventory · Audit"]
         LV[LiveView UI]
-        DB[(Postgres)]
+        DB["(Postgres)"]
     end
 
-    Xero[(Xero<br/>accounting + inventory)]
+    Xero["(Xero<br/>accounting + inventory)"]
     Owner((Owner))
 
     Sources -- webhooks / polling --> SCN1
@@ -121,7 +121,7 @@ sequenceDiagram
     actor Customer
     participant Squarespace
     participant Stripe
-    participant Make as Make scenario<br/>(Squarespace ingress)
+    participant Make as Make scenario (Squarespace ingress)
     participant Phoenix as Phoenix /api/v1
     participant DB as Postgres
     participant UI as LiveView (owner)
@@ -139,7 +139,7 @@ sequenceDiagram
     Note over Stripe,Make: Separately, Stripe charge.succeeded<br/>webhook fires the Stripe ingress scenario
     Stripe->>Make: charge.succeeded webhook
     Make->>Phoenix: POST /sale-events (channel=stripe, metadata=squarespace_order_id)
-    Phoenix->>DB: upsert; trigger correlation attempt
+    Phoenix->>DB: upsert, trigger correlation attempt
     Phoenix->>Phoenix: id_match strategy succeeds<br/>(charge.metadata.order_id == squarespace event id)
     Phoenix->>DB: insert correlation (high confidence)
 
@@ -157,7 +157,7 @@ sequenceDiagram
     participant Stripe
     participant Make as Make scenarios
     participant Phoenix
-    participant Matcher as Make matcher<br/>(scheduled)
+    participant Matcher as Make matcher (scheduled)
     participant UI as LiveView
 
     Attendee->>TT: buy 2× Adult Pass
@@ -175,7 +175,7 @@ sequenceDiagram
     Matcher->>Phoenix: GET /sale-events?state=needs_resolution&reason=fuzzy_match
     Matcher->>Stripe: lookup charge by id (re-check metadata)
     Stripe-->>Matcher: charge details (still no order_id)
-    Matcher->>Phoenix: no new info; correlation unchanged
+    Matcher->>Phoenix: no new info, correlation unchanged
 
     UI-->>UI: owner sees event in needs_resolution<br/>with the proposed Stripe match
     actor Owner
@@ -220,9 +220,9 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Cron as Make schedule<br/>(daily 2am)
+    participant Cron as Make schedule (daily 2am)
     participant Make as Sweep scenario
-    participant Sources as Squarespace · Stripe ·<br/>Square · TicketTailor
+    participant Sources as Squarespace · Stripe · Square · TicketTailor
     participant Xero
     participant Phoenix
     participant UI as Payouts LiveView
@@ -252,14 +252,14 @@ The non-trivial business decisions the system makes, made explicit.
 
 ```mermaid
 flowchart TD
-    A[Sale event arrives with line items] --> B{For each line item:<br/>is channel_sku known?}
-    B -->|Yes, mapped to item| C{Item active in Xero?}
-    B -->|No, unknown external id| D[Create channel_sku<br/>in 'unmapped' state]
-    B -->|Yes, but unmapped| D
-    D --> E[Mark sale_event as<br/>needs_resolution<br/>reason: 'unmapped SKU']
+    A[Sale event arrives with line items] --> B{"For each line item:<br/>is channel_sku known?"}
+    B -->|"Yes, mapped to item"| C{Item active in Xero?}
+    B -->|"No, unknown external id"| D["Create channel_sku<br/>in 'unmapped' state"]
+    B -->|"Yes, but unmapped"| D
+    D --> E["Mark sale_event as<br/>needs_resolution<br/>reason: 'unmapped SKU'"]
     E --> Z((park for owner action))
     C -->|Yes| F{All lines resolved?}
-    C -->|No, retired/deleted| E
+    C -->|"No, retired/deleted"| E
     F -->|Yes| G[Continue to correlation]
     F -->|No| E
     G --> Z2((next decision: correlation))
@@ -269,20 +269,20 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    Start[Sale event needs correlation] --> S1{id_match:<br/>does payment event ID appear<br/>explicitly on this event?}
-    S1 -->|Yes| H1[Correlate · confidence=high · strategy=id_match]
-    S1 -->|No| S2{metadata_match:<br/>does any payment event<br/>reference this event's external ID?}
-    S2 -->|Yes| H2[Correlate · confidence=high · strategy=metadata_match]
-    S2 -->|No| S3{amount_time_window:<br/>exactly one payment event<br/>with same gross ±0¢<br/>within ±60s, both unmatched?}
-    S3 -->|Yes| M1[Correlate · confidence=medium · strategy=amount_time_window]
+    Start[Sale event needs correlation] --> S1{"id_match:<br/>does payment event ID appear<br/>explicitly on this event?"}
+    S1 -->|Yes| H1["Correlate · confidence=high · strategy=id_match"]
+    S1 -->|No| S2{"metadata_match:<br/>does any payment event<br/>reference this event's external ID?"}
+    S2 -->|Yes| H2["Correlate · confidence=high · strategy=metadata_match"]
+    S2 -->|No| S3{"amount_time_window:<br/>exactly one payment event<br/>with same gross ±0¢<br/>within ±60s, both unmatched?"}
+    S3 -->|Yes| M1["Correlate · confidence=medium · strategy=amount_time_window"]
     S3 -->|No| NM[No correlation found]
-    H1 --> R1{event is Squarespace<br/>or TicketTailor?}
+    H1 --> R1{"event is Squarespace<br/>or TicketTailor?"}
     H2 --> R1
     R1 -->|Yes| AP[continue to approval readiness]
     R1 -->|No| AP
-    M1 --> NR1[needs_resolution<br/>reason: 'fuzzy match — confirm']
-    NM --> AGE{event > 30 min old<br/>without correlation?}
-    AGE -->|Yes| NR2[needs_resolution<br/>reason: 'no payment side']
+    M1 --> NR1["needs_resolution<br/>reason: 'fuzzy match — confirm'"]
+    NM --> AGE{"event > 30 min old<br/>without correlation?"}
+    AGE -->|Yes| NR2["needs_resolution<br/>reason: 'no payment side'"]
     AGE -->|No| WAIT[stay pending — re-try on next matcher run]
 ```
 
@@ -292,10 +292,10 @@ flowchart TD
 flowchart TD
     A[Sale event in pending] --> B{All lines resolved?}
     B -->|No| NR1[needs_resolution: unmapped SKU]
-    B -->|Yes| C{Correlation present<br/>(or Square self-correlated)?}
+    B -->|Yes| C{"Correlation present<br/>(or Square self-correlated)?"}
     C -->|No| NR2[needs_resolution: no payment side]
-    C -->|Yes, confidence=high| D{Sum of lines = gross ±$0.50?}
-    C -->|Yes, confidence=medium| NR3[needs_resolution: confirm fuzzy match]
+    C -->|"Yes, confidence=high"| D{"Sum of lines = gross ±$0.50?"}
+    C -->|"Yes, confidence=medium"| NR3[needs_resolution: confirm fuzzy match]
     D -->|Yes| READY[ready to approve · show in 'ready' tab]
     D -->|No| NR4[needs_resolution: amount mismatch]
 ```
@@ -308,11 +308,11 @@ flowchart TD
     B --> C[Dispatch to Make Xero-write webhook]
     C --> D{Make scenario succeeds end-to-end?}
     D -->|Yes — invoice posted| E[state: posted · audit entry · UI updates]
-    D -->|No — Xero rejected (4xx)| F[state: failed · capture Xero error]
-    D -->|No — Make scenario error / 5xx| G{Within Make retry budget?}
+    D -->|"No — Xero rejected (4xx)"| F[state: failed · capture Xero error]
+    D -->|"No — Make scenario error / 5xx"| G{Within Make retry budget?}
     G -->|Yes| H[Make retries with backoff]
-    G -->|No, exhausted| I[state: failed · reason: 'integration error']
-    F --> J[owner sees error · fixes underlying issue<br/>(remap SKU, update item, etc.)]
+    G -->|"No, exhausted"| I[state: failed · reason: 'integration error']
+    F --> J["owner sees error · fixes underlying issue<br/>(remap SKU, update item, etc.)"]
     J --> K[owner clicks Retry · state: pending]
     K --> A
     I --> J
@@ -334,8 +334,8 @@ flowchart TB
 
     subgraph Per_Payout["Per-payout reconciliation (daily)"]
         direction LR
-        P1[Payout lands in Xero<br/>via existing bank feed] --> P2[Sweep pulls payout into Phoenix]
-        P2 --> P3{Sum of approved invoices<br/>for date range and processor<br/>== payout gross ± tolerance?}
+        P1["Payout lands in Xero<br/>via existing bank feed"] --> P2[Sweep pulls payout into Phoenix]
+        P2 --> P3{"Sum of approved invoices<br/>for date range and processor<br/>== payout gross ± tolerance?"}
         P3 -->|Yes| P4[Payout reconciled]
         P3 -->|No| P5[Drift flagged for review]
     end

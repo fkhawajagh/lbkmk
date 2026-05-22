@@ -1,10 +1,10 @@
 project:
   type: default
-  output-dir: dist
+  output-dir: ../dist
 
 format:
   html:
-    theme: theme/lbk-review.scss
+    theme: ../theme/lbk-review.scss
     toc: true
     toc-depth: 3
     toc-location: left
@@ -19,10 +19,9 @@ format:
     anchor-sections: true
     link-external-icon: false
     link-external-newwindow: false
+    html-math-method: plain
     include-in-header:
-      - _includes/mermaid-loader.html
-    mermaid:
-      theme: neutral
+      - ../_includes/head-include.html
 
 execute:
-  enabled: false   # docs are static markdown — no code execution
+  enabled: false
