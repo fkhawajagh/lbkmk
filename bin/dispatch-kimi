@@ -1,0 +1,159 @@
+#!/usr/bin/env zsh
+# bin/dispatch-kimi — dispatch an implementation task to Kimi via kimi-ecc.
+#
+# See docs/external-agent-protocol.md for the rules Kimi follows once dispatched.
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  bin/dispatch-kimi <plan_path> <worktree_path>
+  bin/dispatch-kimi --review <feedback_path> <worktree_path>
+
+Initial dispatch: hands the plan at <plan_path> to Kimi running in <worktree_path>.
+Review round:    hands the findings at <feedback_path> to Kimi for follow-up.
+
+Both paths can be absolute or relative to the current directory.
+
+Exit codes:
+  0  Kimi exited 0 AND at least one new commit landed on the branch.
+  2  Kimi exited 0 but made no commits (Kimi declined to act; read the status report).
+  3  Protocol violation: branch was pushed to origin (Kimi should not push).
+  64 Usage error.
+  *  Kimi's non-zero exit code, propagated.
+EOF
+  exit 64
+}
+
+mode="initial"
+if [[ "${1:-}" == "--review" ]]; then
+  mode="review"
+  shift
+fi
+
+if (( $# != 2 )); then
+  usage
+fi
+
+input_path="$1"
+worktree="$2"
+
+if [[ ! -f "$input_path" ]]; then
+  echo "Error: input path does not exist or is not a file: $input_path" >&2
+  exit 64
+fi
+if [[ ! -d "$worktree" ]]; then
+  echo "Error: worktree path does not exist or is not a directory: $worktree" >&2
+  exit 64
+fi
+
+# Resolve to absolute paths (zsh :A modifier).
+input_abs="${input_path:A}"
+worktree_abs="${worktree:A}"
+
+# Refuse to dispatch into a worktree on main.
+current_branch=$(git -C "$worktree_abs" branch --show-current)
+if [[ "$current_branch" == "main" ]]; then
+  echo "Error: worktree is on branch 'main'. Dispatch into a feature branch only." >&2
+  exit 64
+fi
+
+# Compute relative path of input within the worktree (for the prompt).
+input_rel="${input_abs#${worktree_abs}/}"
+
+# Commit baseline (for the "did Kimi make commits" check at the end).
+baseline_sha=$(git -C "$worktree_abs" rev-parse HEAD)
+
+# Origin baseline. The post-run check compares against this so re-dispatching
+# onto a branch already on origin (from a prior round) does not get misread as
+# a Kimi-side push. A push counts only when origin advanced during this run.
+baseline_remote_sha=$(git -C "$worktree_abs" ls-remote origin "refs/heads/${current_branch}" 2>/dev/null | awk '{print $1}' || true)
+
+# Log destination, scoped by branch so runs do not collide across worktrees.
+timestamp=$(date +%Y%m%d-%H%M%S)
+log_dir="${worktree_abs}/docs/.context/${current_branch}"
+mkdir -p "$log_dir"
+log_file="${log_dir}/kimi-run-${timestamp}.log"
+
+if [[ "$mode" == "initial" ]]; then
+  kickoff=$(cat <<KICKOFF
+You are an external implementation agent for the lbkmk project.
+
+WORKING DIRECTORY: ${worktree_abs}
+PLAN: ${input_rel}
+
+INSTRUCTIONS:
+1. cd to the working directory first. Confirm with \`pwd\` and \`git branch --show-current\`.
+2. Read CLAUDE.md at the repo root.
+3. Read docs/external-agent-protocol.md in full.
+4. Read the plan at ${input_rel}.
+5. Execute the plan. Follow the protocol exactly.
+6. Do NOT run \`git push\`. Do NOT run \`gh pr create\`.
+7. When complete (or stopped at a checkpoint), write the status report to the path the plan specifies (typically docs/handoff/<date>-<branch>.md).
+8. Exit.
+
+FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption — STOP, write what you observed to the status report, and exit. Do not guess.
+KICKOFF
+)
+else
+  kickoff=$(cat <<KICKOFF
+You are an external implementation agent for the lbkmk project, addressing review findings from a previous round.
+
+WORKING DIRECTORY: ${worktree_abs}
+FEEDBACK: ${input_rel}
+
+INSTRUCTIONS:
+1. cd to the working directory first. Confirm with \`pwd\` and \`git branch --show-current\`.
+2. Read CLAUDE.md at the repo root.
+3. Read docs/external-agent-protocol.md in full.
+4. Read the feedback file at ${input_rel}. Address every finding AND complete any remaining plan tasks. Treat the feedback as additive to, not a replacement for, the plan: a checkpoint-round dispatch that left unfinished plan tasks must still complete them in this run unless the feedback explicitly defers them. The original plan is the contract; do not repeat work already committed, but do continue work that was left undone.
+5. Make the fixes and remaining implementation. Follow the protocol exactly.
+6. Do NOT run \`git push\`. Do NOT run \`gh pr create\`.
+7. Update the existing status report at the path the previous round used.
+8. Exit only when both the feedback findings and the remaining plan tasks are complete, or when you hit the next checkpoint defined in the plan.
+
+FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption — STOP, write what you observed to the status report, and exit. Do not guess.
+KICKOFF
+)
+fi
+
+echo "Dispatching Kimi: mode=${mode}, worktree=${worktree_abs}, input=${input_rel}" >&2
+echo "Log: ${log_file}" >&2
+
+# Run kimi-ecc, tee output to the log. Capture exit code without aborting on non-zero.
+set +e
+kimi-ecc -w "$worktree_abs" --print --yolo -p "$kickoff" 2>&1 | tee "$log_file"
+kimi_exit=${pipestatus[1]}
+set -e
+
+# Post-run checks.
+final_sha=$(git -C "$worktree_abs" rev-parse HEAD)
+
+if (( kimi_exit != 0 )); then
+  echo "Kimi exited non-zero: ${kimi_exit}" >&2
+  exit $kimi_exit
+fi
+
+if [[ "$baseline_sha" == "$final_sha" ]]; then
+  echo "Warning: Kimi exited 0 but made no new commits on branch ${current_branch}." >&2
+  echo "Inspect the status report and the log at ${log_file}." >&2
+  exit 2
+fi
+
+# Kimi must not push. We detect a push by comparing origin's tip before and
+# after the run. A branch that was already on origin (from a prior dispatch
+# round) is fine; only a Kimi-side advance during *this* run counts as a
+# protocol violation.
+final_remote_sha=$(git -C "$worktree_abs" ls-remote origin "refs/heads/${current_branch}" 2>/dev/null | awk '{print $1}' || true)
+if [[ "$baseline_remote_sha" != "$final_remote_sha" ]]; then
+  echo "Protocol violation: origin ${current_branch} advanced during this run." >&2
+  echo "  baseline: ${baseline_remote_sha:-<absent>}" >&2
+  echo "  final:    ${final_remote_sha:-<absent>}" >&2
+  echo "Kimi pushed against protocol. Investigate and decide whether to keep the push." >&2
+  exit 3
+fi
+
+echo "Dispatch complete. New commits on ${current_branch}:" >&2
+git -C "$worktree_abs" log --oneline "${baseline_sha}..${final_sha}" >&2
+exit 0
