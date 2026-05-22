@@ -2,8 +2,10 @@
 
 // ============================================================
 //  Little Big Kids — Review Document Theme
-//  Aesthetic: literary monograph, warm cream paper
-//  Typography: Fraunces (display) + Newsreader (body) + IBM Plex Mono (code)
+//  Aesthetic: editorial sans-serif on warm paper, with restrained
+//             serif used only for the document title + section numbers.
+//  Typography: Plus Jakarta Sans (display) + Public Sans (body)
+//              + IBM Plex Mono (code) + Fraunces (sparing serif accent).
 // ============================================================
 
 // --- Palette ----------------------------------------------------------------
@@ -20,6 +22,13 @@ $forest:          #4A6B5C;   // secondary accent
 $honey:           #D4A574;   // tertiary, highlights
 $honey-light:     #EAD4B2;   // soft warm highlight backgrounds
 
+// --- Type stack -------------------------------------------------------------
+
+$ff-display:  "Plus Jakarta Sans", "Helvetica Neue", system-ui, sans-serif;
+$ff-body:     "Public Sans", "Helvetica Neue", system-ui, sans-serif;
+$ff-mono:     "IBM Plex Mono", "SF Mono", Menlo, monospace;
+$ff-accent:   "Fraunces", Georgia, serif;   // used only on title + section numbers
+
 // --- Bootstrap (Quarto's underlying variables) ------------------------------
 
 $body-bg:                $paper;
@@ -29,15 +38,15 @@ $link-hover-color:       $sienna-deep;
 $link-decoration:        none;
 $link-hover-decoration:  underline;
 
-$font-family-sans-serif: "Newsreader", Georgia, serif;
-$font-family-monospace:  "IBM Plex Mono", "SF Mono", Menlo, monospace;
-$headings-font-family:   "Fraunces", Georgia, serif;
-$headings-font-weight:   500;
+$font-family-sans-serif: $ff-body;
+$font-family-monospace:  $ff-mono;
+$headings-font-family:   $ff-display;
+$headings-font-weight:   600;
 $headings-color:         $ink;
-$headings-line-height:   1.18;
+$headings-line-height:   1.2;
 
 $font-size-base:         1.0625rem;   // 17px
-$line-height-base:       1.62;
+$line-height-base:       1.6;
 
 $border-color:           $paper-edge;
 $table-border-color:     $paper-edge;
@@ -52,11 +61,9 @@ $container-max-widths: (sm: 540px, md: 720px, lg: 760px, xl: 800px, xxl: 820px);
 
 /*-- scss:rules --*/
 
-// --- Fonts ------------------------------------------------------------------
-
-// Bunny Fonts (privacy-respecting Google Fonts mirror).
-// Quarto's --embed-resources will inline these at render time.
-@import url('https://fonts.bunny.net/css?family=fraunces:400,500,600,700|newsreader:400,400i,500,500i,600,600i|ibm-plex-mono:400,500&display=swap');
+// Fonts are loaded via a <link> tag in docs/_includes/mermaid-loader.html
+// (pandoc's embed-resources follows <link rel="stylesheet"> reliably,
+// but does not follow CSS @import chains).
 
 
 // --- Page-level atmosphere --------------------------------------------------
@@ -71,9 +78,8 @@ html {
 }
 
 body {
-  font-family: "Newsreader", Georgia, serif;
-  font-feature-settings: "kern", "liga", "calt", "onum" 1;   // old-style figures in body
-  font-optical-sizing: auto;
+  font-family: $ff-body;
+  font-feature-settings: "kern", "liga", "calt", "ss01" 1;
   color: $ink;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -90,8 +96,10 @@ body {
   border-bottom: 1px solid $paper-edge;
   margin-bottom: 3rem;
 
+  // Sparing serif: the document title is the one place the editorial
+  // accent shows up at scale. Sets a tone before the sans takes over.
   .title {
-    font-family: "Fraunces", Georgia, serif;
+    font-family: $ff-accent;
     font-weight: 600;
     font-size: clamp(2.25rem, 4.5vw, 3.25rem);
     font-variation-settings: "opsz" 96, "SOFT" 50;
@@ -102,10 +110,10 @@ body {
   }
 
   .subtitle {
-    font-family: "Newsreader", Georgia, serif;
+    font-family: $ff-body;
     font-style: italic;
     font-weight: 400;
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     color: $ink-soft;
     line-height: 1.4;
     max-width: 60ch;
@@ -113,7 +121,7 @@ body {
 
   .quarto-title-meta {
     margin-top: 1.5rem;
-    font-family: "IBM Plex Mono", monospace;
+    font-family: $ff-mono;
     font-size: 0.78rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -127,78 +135,77 @@ body {
 }
 
 
-// --- Section headings -------------------------------------------------------
+// --- Section headings (all sans) --------------------------------------------
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Fraunces", Georgia, serif;
-  font-optical-sizing: auto;
+  font-family: $ff-display;
   color: $ink;
   margin-top: 2.6rem;
   margin-bottom: 0.9rem;
-  font-variation-settings: "opsz" 60, "SOFT" 30;
+  font-feature-settings: "kern", "liga", "calt";
 }
 
 h1 {
-  font-size: 2.1rem;
-  font-weight: 600;
-  font-variation-settings: "opsz" 96, "SOFT" 50;
-  letter-spacing: -0.012em;
+  font-size: 1.95rem;
+  font-weight: 700;
+  letter-spacing: -0.018em;
   margin-top: 3.2rem;
   padding-bottom: 0.4rem;
   border-bottom: 1px solid $paper-edge;
 }
 
 h2 {
-  font-size: 1.55rem;
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.012em;
 }
 
 h3 {
-  font-size: 1.22rem;
+  font-size: 1.18rem;
   font-weight: 600;
+  letter-spacing: -0.005em;
   color: $ink-soft;
 }
 
 h4 {
-  font-size: 1.05rem;
+  font-size: 1.02rem;
   font-weight: 600;
   color: $ink-soft;
   text-transform: none;
 }
 
-// Section numbers in tabular old-style figures, sienna small-caps style.
-// Quarto wraps auto-numbers in .header-section-number.
+// Section number prefix: the second (and only other) place the editorial
+// serif appears. Tiny, recurring detail — sets it apart from the heading text.
 .header-section-number {
-  font-family: "Fraunces", Georgia, serif;
+  font-family: $ff-accent;
   font-feature-settings: "tnum" 1, "onum" 1;
+  font-style: normal;
   color: $sienna;
   font-weight: 500;
-  font-size: 0.85em;
+  font-size: 0.82em;
   margin-right: 0.6em;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
 }
 
 
 // --- Body paragraphs --------------------------------------------------------
 
 main, .content {
-  max-width: 72ch;
+  max-width: 74ch;
   margin: 0 auto;
   padding: 0 1.5rem;
 }
 
 p {
-  margin-bottom: 1.15rem;
+  margin-bottom: 1.1rem;
   hyphens: auto;
   -webkit-hyphens: auto;
 }
 
-// First paragraph after each h1: very subtle lead-in treatment.
+// First paragraph after each h1: subtle lead-in.
 h1 + p {
-  font-size: 1.08rem;
+  font-size: 1.07rem;
   color: $ink-soft;
-  font-feature-settings: "kern", "liga", "calt", "onum" 1;
 }
 
 
@@ -223,8 +230,8 @@ a:hover {
 // --- Inline code / code blocks ----------------------------------------------
 
 code {
-  font-family: "IBM Plex Mono", "SF Mono", Menlo, monospace;
-  font-size: 0.86em;
+  font-family: $ff-mono;
+  font-size: 0.85em;
   color: $sienna-deep;
   background-color: rgba($sienna, 0.06);
   padding: 0.1em 0.36em;
@@ -256,20 +263,21 @@ pre {
 table {
   border-collapse: collapse;
   margin: 1.75rem 0;
-  font-size: 0.95rem;
-  font-feature-settings: "tnum" 1;  // tabular figures for column alignment
+  font-size: 0.94rem;
+  font-feature-settings: "tnum" 1;
   width: 100%;
 
   thead {
     th {
-      font-family: "Fraunces", Georgia, serif;
-      font-weight: 600;
+      font-family: $ff-display;
+      font-weight: 700;
       color: $ink;
       text-align: left;
       padding: 0.65rem 0.9rem;
       border-bottom: 1.5px solid $ink;
       background-color: transparent;
-      font-size: 0.92rem;
+      font-size: 0.9rem;
+      letter-spacing: -0.005em;
     }
   }
 
@@ -297,15 +305,14 @@ blockquote {
   border-left: 2px solid $sienna;
   padding: 0.5rem 0 0.5rem 1.5rem;
   margin: 1.75rem 0;
-  font-family: "Newsreader", Georgia, serif;
+  font-family: $ff-body;
   font-style: italic;
   color: $ink-soft;
-  font-size: 1.02rem;
+  font-size: 1rem;
   line-height: 1.55;
 
   p:last-child { margin-bottom: 0; }
 
-  // Document version / metadata callout — strip italic if it's that.
   strong { font-style: normal; color: $ink; }
 }
 
@@ -316,7 +323,8 @@ blockquote {
 figure.cell-output-display,
 figure.figure,
 .mermaid,
-div.mermaid {
+div.mermaid,
+pre.mermaid {
   background-color: $paper-deep;
   border: 1px solid $paper-edge;
   border-radius: 4px;
@@ -343,9 +351,9 @@ div.mermaid {
 figcaption,
 .quarto-figure-caption,
 .figure-caption {
-  font-family: "Newsreader", Georgia, serif;
+  font-family: $ff-body;
   font-style: italic;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: $ink-quiet;
   text-align: center;
   margin-top: 0.75rem;
@@ -355,7 +363,7 @@ figcaption,
 // --- Lists ------------------------------------------------------------------
 
 ul, ol {
-  margin-bottom: 1.15rem;
+  margin-bottom: 1.1rem;
   padding-left: 1.5rem;
 
   li {
@@ -363,7 +371,6 @@ ul, ol {
     line-height: 1.55;
   }
 
-  // Tight nested list spacing
   ul, ol {
     margin-top: 0.4rem;
     margin-bottom: 0.4rem;
@@ -371,13 +378,13 @@ ul, ol {
 }
 
 ul li::marker { color: $sienna; }
-ol li::marker { color: $sienna; font-family: "Fraunces", serif; font-feature-settings: "onum" 1; }
+ol li::marker { color: $sienna; font-weight: 600; }
 
 
 // --- TOC --------------------------------------------------------------------
 
 #TOC, .quarto-secondary-nav, nav.toc-active {
-  font-family: "Newsreader", Georgia, serif;
+  font-family: $ff-body;
   font-size: 0.88rem;
   line-height: 1.45;
 
@@ -395,7 +402,9 @@ ol li::marker { color: $sienna; font-family: "Fraunces", serif; font-feature-set
 
   .toc-section-number {
     color: $sienna;
+    font-family: $ff-accent;
     font-feature-settings: "tnum" 1, "onum" 1;
+    font-size: 0.95em;
     margin-right: 0.45em;
   }
 }
