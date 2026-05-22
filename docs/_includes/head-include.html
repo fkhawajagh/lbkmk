@@ -84,15 +84,32 @@
     height: 100%;
     overflow: auto;
     padding: 2.5rem 2rem 2rem 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    box-sizing: border-box;
+    /* Centered when the diagram fits, scrollable when it doesn't.
+       text-align centers inline-block children horizontally;
+       margin-auto centers the inner wrapper vertically when smaller. */
+    text-align: center;
   }
   dialog#lbk-zoom .lbk-zoom__inner svg {
-    display: block;
-    width: auto;
-    height: auto;
+    display: inline-block;
+    vertical-align: top;
     max-width: none;
+  }
+  /* Tokyo-Night-coloured scrollbars on the zoom modal */
+  dialog#lbk-zoom .lbk-zoom__inner::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  dialog#lbk-zoom .lbk-zoom__inner::-webkit-scrollbar-track {
+    background: #1A1B26;
+  }
+  dialog#lbk-zoom .lbk-zoom__inner::-webkit-scrollbar-thumb {
+    background: #292E42;
+    border-radius: 6px;
+    border: 2px solid #1A1B26;
+  }
+  dialog#lbk-zoom .lbk-zoom__inner::-webkit-scrollbar-thumb:hover {
+    background: #7AA2F7;
   }
 </style>
 <script>

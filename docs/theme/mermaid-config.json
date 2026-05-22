@@ -41,7 +41,7 @@
     "attributeBackgroundColorEven": "#1A1B26",
     "errorBkgColor": "#3D1F2A",
     "errorTextColor": "#F7768E",
-    "fontFamily": "Public Sans, Helvetica Neue, system-ui, sans-serif",
+    "fontFamily": "Helvetica, Arial, sans-serif",
     "fontSize": "14px"
   },
   "flowchart":    { "curve": "basis", "htmlLabels": true, "padding": 16, "useMaxWidth": true },

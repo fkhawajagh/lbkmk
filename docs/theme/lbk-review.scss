@@ -237,12 +237,18 @@ a:hover {
 
 // --- Inline code / code blocks ----------------------------------------------
 
-code {
+// Inline code. Selectors mirror Quarto's higher-specificity rule
+// (p/li/td code:not(.sourceCode)) so we override its default light-grey
+// background on the dark page.
+code,
+p code:not(.sourceCode),
+li code:not(.sourceCode),
+td code:not(.sourceCode) {
   font-family: $ff-mono;
   font-size: 0.85em;
   color: $accent-cyan;
   background-color: $bg-edge;
-  border: 1px solid rgba($accent-cyan, 0.18);
+  border: 1px solid rgba($accent-cyan, 0.22);
   padding: 0.08em 0.4em;
   border-radius: 3px;
   font-feature-settings: "kern", "liga" 0;

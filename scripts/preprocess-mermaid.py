@@ -55,10 +55,14 @@ def render_block(src: str, idx: int) -> str:
     in_path.unlink(missing_ok=True)
     out_path.unlink(missing_ok=True)
 
-    # mermaid-cli hardcodes id="my-svg". Give each diagram a unique id so
-    # CSS/JS that targets one doesn't collide with the others on the page.
+    # mermaid-cli hardcodes id="my-svg" and uses #my-svg as the scope
+    # selector inside the SVG's internal <style> block (and inside data-id
+    # references on internal elements). We need to rewrite ALL of them
+    # together so the diagram's own styling continues to apply once renamed
+    # — otherwise text falls back to inherited document fonts (causing cell
+    # overflow / truncation) and marker fills go to black defaults.
     unique_id = f"d-{idx:02d}-{h}"
-    svg = svg.replace('id="my-svg"', f'id="{unique_id}"', 1)
+    svg = svg.replace("my-svg", unique_id)
 
     # Strip the inline white-background style mermaid-cli stamps on.
     svg = re.sub(r"background-color:\s*white;?", "", svg)
