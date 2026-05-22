@@ -35,6 +35,7 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
+  .diagram img,
   .diagram svg {
     display: block;
     margin: 0 auto;
@@ -90,7 +91,8 @@
        margin-auto centers the inner wrapper vertically when smaller. */
     text-align: center;
   }
-  dialog#lbk-zoom .lbk-zoom__inner svg {
+  dialog#lbk-zoom .lbk-zoom__inner svg,
+  dialog#lbk-zoom .lbk-zoom__inner img {
     display: inline-block;
     vertical-align: top;
     max-width: none;
@@ -143,21 +145,29 @@
       return dlg;
     }
 
-    function openZoom(svg) {
+    function openZoom(source) {
       var dlg = makeDialog();
       var inner = dlg.querySelector('.lbk-zoom__inner');
       while (inner.firstChild) inner.removeChild(inner.firstChild);
-      var clone = svg.cloneNode(true);
+      var clone = source.cloneNode(true);
 
-      var vb = clone.getAttribute('viewBox');
-      if (vb) {
-        var parts = vb.split(/\s+/).map(parseFloat);
-        if (parts.length === 4) {
-          var w = parts[2], h = parts[3];
-          clone.style.width = (w * 1.5) + 'px';
-          clone.style.height = (h * 1.5) + 'px';
-          clone.removeAttribute('width');
-          clone.removeAttribute('height');
+      // Scale up by 1.5x. For <img>, multiply rendered width/height.
+      // For inline <svg>, use viewBox.
+      if (source.tagName === 'IMG') {
+        var rect = source.getBoundingClientRect();
+        clone.style.width = (rect.width * 1.5) + 'px';
+        clone.style.height = (rect.height * 1.5) + 'px';
+      } else {
+        var vb = clone.getAttribute('viewBox');
+        if (vb) {
+          var parts = vb.split(/\s+/).map(parseFloat);
+          if (parts.length === 4) {
+            var w = parts[2], h = parts[3];
+            clone.style.width = (w * 1.5) + 'px';
+            clone.style.height = (h * 1.5) + 'px';
+            clone.removeAttribute('width');
+            clone.removeAttribute('height');
+          }
         }
       }
       inner.appendChild(clone);
@@ -169,8 +179,8 @@
       for (var i = 0; i < diagrams.length; i++) {
         (function (d) {
           d.addEventListener('click', function () {
-            var svg = d.querySelector('svg');
-            if (svg) openZoom(svg);
+            var source = d.querySelector('img') || d.querySelector('svg');
+            if (source) openZoom(source);
           });
         })(diagrams[i]);
       }

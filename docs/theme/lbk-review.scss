@@ -254,18 +254,23 @@ td code:not(.sourceCode) {
   font-feature-settings: "kern", "liga" 0;
 }
 
-pre {
-  background-color: $bg-surface;
+pre,
+pre.sourceCode,
+div.sourceCode,
+div.sourceCode pre.sourceCode {
+  background-color: $bg-surface !important;
   border: 1px solid $bg-edge;
   border-left: 3px solid $accent;
   border-radius: 4px;
   padding: 1rem 1.25rem;
   margin: 1.5rem 0;
   overflow-x: auto;
+  color: $fg-text;
 
   code {
-    background: none;
-    color: $fg-text;
+    background: none !important;
+    border: 0;
+    color: inherit;
     font-size: 0.83rem;
     padding: 0;
     border-radius: 0;

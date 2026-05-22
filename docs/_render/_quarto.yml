@@ -20,6 +20,7 @@ format:
     link-external-icon: false
     link-external-newwindow: false
     html-math-method: plain
+    highlight-style: dracula
     include-in-header:
       - ../_includes/head-include.html
 

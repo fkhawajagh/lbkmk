@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent.resolve()
 DOCS = ROOT / "docs"
 RENDER = DOCS / "_render"
+DIAGRAMS = RENDER / "diagrams"
 MMDC = ROOT / "node_modules/.bin/mmdc"
 CONFIG = DOCS / "theme/mermaid-config.json"
 
@@ -27,12 +28,25 @@ MERMAID_BLOCK = re.compile(r"^```mermaid\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 
 
 def render_block(src: str, idx: int) -> str:
-    """Render one mermaid source string to an HTML fragment containing inline SVG."""
+    """Render one mermaid source string to a standalone SVG file and emit
+    an HTML fragment referencing it with <img>.
+
+    Why a file + <img> instead of inlining the SVG markup directly in the
+    HTML: pandoc's citation feature interprets '@keyframes' (and any other
+    '@token') inside an inline SVG's CSS as a citation marker, breaks the
+    SVG mid-stream, and orphans the styling. Using <img> hands the SVG to
+    the browser opaquely; pandoc never sees its contents. Quarto's
+    embed-resources later inlines the file as a base64 data URI so the
+    final HTML stays self-contained.
+    """
     h = hashlib.sha1(src.encode()).hexdigest()[:10]
+    diagram_name = f"d-{idx:02d}-{h}.svg"
+    out_path = DIAGRAMS / diagram_name
+
     with tempfile.NamedTemporaryFile(mode="w", suffix=".mmd", delete=False) as fin:
         fin.write(src)
         in_path = Path(fin.name)
-    out_path = in_path.with_suffix(".svg")
+
     cmd = [
         str(MMDC),
         "-i", str(in_path),
@@ -42,6 +56,7 @@ def render_block(src: str, idx: int) -> str:
         "--quiet",
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
+    in_path.unlink(missing_ok=True)
     if result.returncode != 0:
         sys.stderr.write(
             f"\nmmdc failed for diagram #{idx}.\n"
@@ -51,25 +66,15 @@ def render_block(src: str, idx: int) -> str:
         )
         raise SystemExit(1)
 
+    # Strip the inline white-background style mermaid-cli stamps on so the
+    # diagram blends with the dark page when rendered.
     svg = out_path.read_text()
-    in_path.unlink(missing_ok=True)
-    out_path.unlink(missing_ok=True)
-
-    # mermaid-cli hardcodes id="my-svg" and uses #my-svg as the scope
-    # selector inside the SVG's internal <style> block (and inside data-id
-    # references on internal elements). We need to rewrite ALL of them
-    # together so the diagram's own styling continues to apply once renamed
-    # — otherwise text falls back to inherited document fonts (causing cell
-    # overflow / truncation) and marker fills go to black defaults.
-    unique_id = f"d-{idx:02d}-{h}"
-    svg = svg.replace("my-svg", unique_id)
-
-    # Strip the inline white-background style mermaid-cli stamps on.
     svg = re.sub(r"background-color:\s*white;?", "", svg)
+    out_path.write_text(svg)
 
     return (
         '\n\n<div class="diagram diagram-zoomable">\n'
-        f'{svg}\n'
+        f'<img src="diagrams/{diagram_name}" alt="Diagram {idx}" class="diagram-svg" />\n'
         '</div>\n\n'
     )
 
@@ -101,6 +106,10 @@ def main() -> None:
         raise SystemExit(1)
 
     RENDER.mkdir(exist_ok=True)
+    DIAGRAMS.mkdir(exist_ok=True)
+    # Clear previously rendered SVGs so stale files don't accumulate.
+    for old in DIAGRAMS.glob("*.svg"):
+        old.unlink()
     for name in INPUTS:
         n = process(name)
         print(f"  {name}: rendered {n} diagram{'s' if n != 1 else ''} -> {(RENDER / name).relative_to(ROOT)}")
