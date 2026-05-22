@@ -66,10 +66,31 @@ def render_block(src: str, idx: int) -> str:
         )
         raise SystemExit(1)
 
+    svg = out_path.read_text()
+
     # Strip the inline white-background style mermaid-cli stamps on so the
     # diagram blends with the dark page when rendered.
-    svg = out_path.read_text()
     svg = re.sub(r"background-color:\s*white;?", "", svg)
+
+    # mermaid's ER (and a few other) themes compute alternating row backgrounds
+    # by tweaking lightness off a derived hue. With a dark base our 'alternate'
+    # rows come out at ~91% lightness — pale cream, unreadable on the dark page.
+    # Replace any computed light HSL fill with our dark surface; replace the
+    # primary HSL with our base navy. This guarantees attribute rows blend into
+    # the Tokyo-Night palette.
+    svg = re.sub(
+        r'fill="hsl\([^)]*?,\s*[^,]+?%\s*,\s*9\d(?:\.\d+)?%\s*\)"',
+        'fill="#1A1B26"',
+        svg,
+    )
+    svg = re.sub(
+        r'fill="hsl\([^)]*?,\s*[^,]+?%\s*,\s*[12]\d(?:\.\d+)?%\s*\)"',
+        'fill="#1F2335"',
+        svg,
+    )
+    # Any remaining HSL fills (mid-lightness) -> bg-surface.
+    svg = re.sub(r'fill="hsl\([^)]+\)"', 'fill="#1F2335"', svg)
+
     out_path.write_text(svg)
 
     return (

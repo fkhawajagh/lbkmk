@@ -1,5 +1,79 @@
 <link rel="stylesheet" href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700,800|public-sans:400,400i,500,500i,600,600i,700|ibm-plex-mono:400,500|fraunces:500,600&display=swap">
 <style>
+  /* Sticky top nav (only present in the combined file) */
+  .lbk-topnav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(26, 27, 38, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid #292E42;
+    padding: 0.55rem 1.25rem;
+    margin: 0 -1.5rem 2rem -1.5rem;
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+  }
+  .lbk-topnav__link {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    color: #A9B1D6;
+    text-decoration: none !important;
+    background: none !important;
+    border-radius: 4px;
+    transition: color 200ms ease, background 200ms ease;
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  .lbk-topnav__link .lbk-topnav__num {
+    font-family: "Fraunces", Georgia, serif;
+    color: #7AA2F7;
+    font-feature-settings: "tnum" 1, "onum" 1;
+    font-style: italic;
+    font-size: 0.9em;
+  }
+  .lbk-topnav__link:hover {
+    color: #C0CAF5;
+    background: rgba(122, 162, 247, 0.08) !important;
+  }
+  .lbk-topnav__link.is-active {
+    color: #C0CAF5;
+    background: rgba(122, 162, 247, 0.12) !important;
+  }
+  .lbk-topnav__link.is-active .lbk-topnav__num {
+    color: #BB9AF7;
+  }
+  /* When the nav is present, push the page heading down a touch so it
+     doesn't tuck under the bar. */
+  .lbk-topnav + h1 { margin-top: 1.5rem; }
+
+  /* Part containers: only one is visible at a time. */
+  .lbk-part { display: none; }
+  .lbk-part.is-active { display: block; }
+  /* When a TOC link points into a hidden part, the LI is collapsed so the
+     sidebar reflects whichever document is currently on screen. */
+  #TOC li.is-hidden-part,
+  .sidebar li.is-hidden-part,
+  nav li.is-hidden-part { display: none !important; }
+
+  /* Quarto's TOC wraps sub-headings in Bootstrap's .collapse, which is
+     hidden by default and only gets .show added when its section is the
+     scroll-spy target. In the combined doc one entire half of the DOM
+     is display:none, which breaks scroll-spy and leaves one sub-list
+     stuck collapsed. Force all TOC sub-lists open. */
+  #TOC ul.collapse,
+  .sidebar ul.collapse,
+  nav.toc-active ul.collapse {
+    display: block !important;
+    height: auto !important;
+    visibility: visible !important;
+  }
+
+
   /* Diagram frame */
   .diagram {
     background-color: #1F2335;
@@ -186,10 +260,90 @@
       }
     }
 
+    function attachNav() {
+      var links = document.querySelectorAll('.lbk-topnav__link');
+      if (!links.length) return;
+      var parts = [];
+      for (var i = 0; i < links.length; i++) {
+        var link = links[i];
+        var el = document.getElementById(link.getAttribute('data-target'));
+        if (el) parts.push({ link: link, el: el });
+      }
+      if (!parts.length) return;
+
+      // Collect every TOC link in the sidebar/secondary-nav once. For each,
+      // record which part its anchor target lives in so we can hide/show the
+      // matching LI when the active part changes.
+      function tocLinks() {
+        return document.querySelectorAll(
+          '#TOC a[href^="#"], .sidebar a[href^="#"], nav.toc-active a[href^="#"], .quarto-secondary-nav a[href^="#"]'
+        );
+      }
+      function partOf(el) {
+        while (el && el !== document.body) {
+          if (el.classList && el.classList.contains('lbk-part')) return el.id;
+          el = el.parentElement;
+        }
+        return null;
+      }
+      var tocIndex = (function () {
+        var entries = [];
+        var seen = tocLinks();
+        for (var i = 0; i < seen.length; i++) {
+          var a = seen[i];
+          var href = a.getAttribute('href') || '';
+          if (!href || href.charAt(0) !== '#' || href.length < 2) continue;
+          var tgt = document.getElementById(href.slice(1));
+          if (!tgt) continue;
+          var p = partOf(tgt);
+          if (!p) continue;
+          entries.push({ li: a.closest('li') || a, part: p });
+        }
+        return entries;
+      })();
+
+      function activate(partId) {
+        for (var i = 0; i < parts.length; i++) {
+          var match = (parts[i].el.id === partId);
+          parts[i].el.classList.toggle('is-active', match);
+          parts[i].link.classList.toggle('is-active', match);
+        }
+        for (var j = 0; j < tocIndex.length; j++) {
+          var entry = tocIndex[j];
+          entry.li.classList.toggle('is-hidden-part', entry.part !== partId);
+        }
+        // Reflect the choice in the URL but don't scroll the page.
+        try { history.replaceState(null, '', '#' + partId); } catch (_) {}
+        window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+      }
+
+      for (var k = 0; k < parts.length; k++) {
+        (function (p) {
+          p.link.addEventListener('click', function (e) {
+            e.preventDefault();
+            activate(p.el.id);
+          });
+        })(parts[k]);
+      }
+
+      // Initial state: URL hash wins, otherwise default to the first part
+      // (which already has .is-active from the markdown).
+      var initial = parts[0].el.id;
+      var hash = window.location.hash ? window.location.hash.slice(1) : '';
+      for (var n = 0; n < parts.length; n++) {
+        if (parts[n].el.id === hash) initial = hash;
+      }
+      activate(initial);
+    }
+
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', attach);
+      document.addEventListener('DOMContentLoaded', function () {
+        attach();
+        attachNav();
+      });
     } else {
       attach();
+      attachNav();
     }
   })();
 </script>

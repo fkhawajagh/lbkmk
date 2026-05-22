@@ -45,8 +45,17 @@
     "fontSize": "14px"
   },
   "flowchart":    { "curve": "basis", "htmlLabels": true, "padding": 16, "useMaxWidth": true },
-  "sequence":     { "actorMargin": 60, "messageMargin": 36, "mirrorActors": false, "wrap": true, "useMaxWidth": true },
-  "er":           { "entityPadding": 18, "useMaxWidth": true },
+  "sequence":     {
+    "actorMargin": 60,
+    "messageMargin": 36,
+    "mirrorActors": false,
+    "wrap": true,
+    "useMaxWidth": true,
+    "actorFontSize": 14,
+    "messageFontSize": 13,
+    "noteFontSize": 13
+  },
+  "er":           { "entityPadding": 18, "useMaxWidth": true, "fontSize": 13 },
   "state":        { "padding": 14, "useMaxWidth": true },
   "securityLevel": "loose"
 }

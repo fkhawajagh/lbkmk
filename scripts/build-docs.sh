@@ -26,12 +26,16 @@ echo ""
 echo "==> Pre-rendering mermaid diagrams to inline SVG"
 python3 scripts/preprocess-mermaid.py
 
+echo ""
+echo "==> Composing combined document with top nav"
+python3 scripts/build-combined.py
+
 mkdir -p docs/dist
 
 echo ""
 echo "==> Running Quarto"
 cd docs/_render
-DOCS=("domain-model.md" "solution-proposal.md")
+DOCS=("domain-model.md" "solution-proposal.md" "combined.md")
 for doc in "${DOCS[@]}"; do
   if [[ ! -f "${doc}" ]]; then
     echo "Skipping ${doc} (file not found)" >&2
