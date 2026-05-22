@@ -1,6 +1,5 @@
 # Build artifacts
 docs/dist/
-*.html
 
 # Editor / OS
 .DS_Store
@@ -25,3 +24,6 @@ priv/static/cache_manifest.json
 # Env
 .env
 .env.local
+
+/.quarto/
+**/*.quarto_ipynb

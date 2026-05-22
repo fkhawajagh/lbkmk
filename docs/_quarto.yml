@@ -1,0 +1,28 @@
+project:
+  type: default
+  output-dir: dist
+
+format:
+  html:
+    theme: theme/lbk-review.scss
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    number-sections: true
+    number-depth: 3
+    embed-resources: true
+    standalone: true
+    section-divs: true
+    fig-cap-location: bottom
+    code-overflow: wrap
+    smooth-scroll: true
+    anchor-sections: true
+    link-external-icon: false
+    link-external-newwindow: false
+    include-in-header:
+      - _includes/mermaid-loader.html
+    mermaid:
+      theme: neutral
+
+execute:
+  enabled: false   # docs are static markdown — no code execution
