@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320" role="img" aria-label="Diwan — khatam mark">
+  <title>Diwan — khatam mark (standalone)</title>
+
+  <!--
+    Standalone khatam mark, scaled for favicon / app icon use.
+    Same construction as docs/branding/diwan-khatam.svg, just
+    without the wordmark below — for use where the mark
+    needs to live alone (browser tab favicon, mobile icon, etc.).
+  -->
+
+  <g fill="none" stroke="#1a3a5c" stroke-width="6" stroke-linejoin="round">
+    <polygon points="160,40 280,160 160,280 40,160" />
+    <polygon points="244.85,75.15 244.85,244.85 75.15,244.85 75.15,75.15" />
+  </g>
+</svg>
