@@ -47,7 +47,7 @@ The following terms have **one specific meaning** in this system.
 | **Inventory Item** | A canonical sellable thing tracked in Xero with a quantity-on-hand. Examples: "Adult Pass — Spring Convention 2026", "LBK T-shirt (red, large)", "Picture book: The Big Adventure". Xero is the source of truth for stock levels and accounting. |
 | **Channel SKU** | A mapping between how a channel identifies a product (e.g. Squarespace variant ID `var_abc123`, TicketTailor ticket type ID `tt_456`, Square catalog item ID `sq_789`) and the canonical Inventory Item in Xero. A single Inventory Item may have many Channel SKUs across channels. |
 | **Correlation** | A pairing between two Sale Events that describe the same underlying business transaction. Example: a Squarespace **order** (sale side) and the Stripe **charge** that paid for it (payment side). |
-| **Reconciliation** | The act of confirming that what we recorded as a sale matches what actually happened: the right items, the right amounts, the right payment, paired correctly across channels, and ultimately reflected in Xero. |
+| **Reconciliation** | The family of comparisons that confirm what we recorded matches what actually happened. The four specific kinds — their sides, source systems, triggers, and success criteria — are catalogued in `solution-proposal.md` §6 ("Reconciliation Catalog"). The cadence on which each kind runs (continuous vs daily) is described in `solution-proposal.md` §7. |
 | **Reconciliation State** | The lifecycle position of a Sale Event: where it is in the path from "just arrived" to "posted to Xero". See §5. |
 | **Approval** | The human action by which the owner confirms that a Sale Event is correctly captured and authorizes it to be posted to Xero. Approval is irreversible in the sense that an approved-and-posted event must be reversed via an explicit void, not by editing or deleting the original. |
 | **Invoice** | The Xero document we create from an approved Sale Event. It carries the itemized lines, the payment reference, and the total. Posting an Invoice in Xero automatically decrements tracked Inventory Items and records the revenue against the right accounts. |
@@ -203,7 +203,7 @@ Each section gives: **purpose**, **identity**, **key attributes**, **lifecycle**
 - **Purpose:** A bank deposit from Stripe or Square representing a settlement of many charges.
 - **Identity:** processor + processor's payout id.
 - **Key attributes:** processor, gross, fee, net, paid-on date, list of constituent Sale Events (the charges that summed into this payout).
-- **Lifecycle:** `received` (we know about it) → `reconciled` (mapped to a set of approved Invoices) → `drift_flagged` (sums don't match within tolerance).
+- **Lifecycle:** `received` (we know about it) → `reconciled` (mapped to a set of approved Invoices) → `drift_flagged` (sums don't match within tolerance — this is the failure state of catalog kind 4 in `solution-proposal.md` §6).
 - **Invariants:**
   - A Payout's gross should equal the sum of net amounts of the Sale Events it settles (within a small tolerance for rounding).
   - Drift is surfaced for owner review; the system never auto-resolves it.
@@ -259,10 +259,12 @@ These are the non-negotiable rules the system enforces. They override convenienc
 
 ### Reconciliation rules
 
-1. **A Sale Event without resolved Line Items is not approvable.** Every Line Item must point to an active Channel SKU pointing to an Inventory Item.
-2. **A Sale Event without a payment-side correlation is `needs_resolution`** — except for Square events, which self-correlate.
-3. **A Sale Event whose Line Items don't sum to the gross is `needs_resolution`**, with a tolerance of $0.50 to absorb rounding and small fee anomalies.
-4. **Approval is a deliberate, human-only act.** No event auto-approves, even with high confidence and clean data. The system can pre-clear an event (move it to `pending` and surface it as "ready") but cannot post on the owner's behalf.
+(See the Reconciliation Catalog in `solution-proposal.md` §6 for the four kinds these rules govern. The "(kind N)" tags below point at the corresponding catalog row.)
+
+1. **A Sale Event without resolved Line Items is not approvable.** Every Line Item must point to an active Channel SKU pointing to an Inventory Item. *(Precondition for kinds 2 and 3 — without resolved lines, neither the internal sum check nor the Xero invoice post can run.)*
+2. **A Sale Event without a payment-side correlation is `needs_resolution`** — except for Square events, which self-correlate. *(Governs kind 1.)*
+3. **A Sale Event whose Line Items don't sum to the gross is `needs_resolution`**, with a tolerance of $0.50 to absorb rounding and small fee anomalies. *(Governs kind 2.)*
+4. **Approval is a deliberate, human-only act.** No event auto-approves, even with high confidence and clean data. The system can pre-clear an event (move it to `pending` and surface it as "ready") but cannot post on the owner's behalf. *(Governs the trigger of kind 3.)*
 
 ### Inventory rules
 
@@ -295,7 +297,8 @@ These are terms where we want the owner to weigh in before locking the vocabular
 - **"Approval"** — does this language match how the owner thinks about the act of signing off on a sale, or is there a better word (e.g. "confirm", "post", "release")?
 - **"Drift"** — currently means a mismatch between approved invoices and a payout total. The owner may have an existing term for this.
 - **"Channel SKU"** — works for the engineering side, but may be too jargon-heavy for owner-facing UI labels. Possible alternatives: "channel product mapping", "external product id".
-- **"Reconciliation"** vs **"matching"** vs **"reconciling"** — the daily activity could be called any of these. Pick whichever the owner already uses.
+
+*(Resolved 2026-05-22 from LBK feedback: "reconciliation" is the term of art; "matching" and "reconciling" are not used. See `solution-proposal.md` §6.)*
 
 ## 8. Open scope questions (for owner review)
 
