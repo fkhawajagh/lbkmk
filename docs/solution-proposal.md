@@ -1,14 +1,16 @@
 ---
 title: Little Big Kids — Solution Proposal
 audience: Owner review (technical)
-status: Draft v0.1
-date: 2026-05-21
-depends_on: docs/domain-model.md
+status: Draft v0.2
+date: 2026-05-22
+depends_on: docs/domain-model.md, docs/integrations/*.md
 ---
 
-> **Document Version: 0.1** | 2026-05-21
+> **Document Version: 0.2** | 2026-05-22
 >
 > Draft for owner review. This document proposes **how** the system described in `docs/domain-model.md` will be built. The vocabulary used here assumes the domain model has been read first.
+>
+> **Changed in v0.2:** mechanism-level corrections from `docs/2026-05-22-solution-proposal-delta.md`, driven by the six per-tool integration references under `docs/integrations/`. The overall architecture is unchanged. Specific changes are called out inline as `[v0.2]`.
 
 ## 1. Executive overview
 
@@ -93,9 +95,9 @@ flowchart LR
 
 | # | Scenario | Trigger | Job |
 |---|---|---|---|
-| 1 | **Source-ingress** (one per channel: Squarespace, Stripe, Square, TicketTailor) | Webhook (preferred) or schedule | Receive raw event, normalize to canonical shape, POST to Phoenix `/api/v1/sale-events`. |
-| 2 | **Cross-channel matcher** | Schedule (~15 min) | Pull unmatched sale events from Phoenix; for each, look up the paired payment event in the source (e.g. fetch the Stripe charge matching a TT order's metadata); POST correlations back. |
-| 3 | **Xero-write** | HTTP webhook (Phoenix calls it on approval) | Build a Xero invoice payload from the approved Sale Event, post to Xero, send result (invoice id or failure) back to Phoenix. |
+| 1 | **Source-ingress** (one per channel: Squarespace, Stripe, Square, TicketTailor) | Webhook (preferred) or schedule | Receive raw event, **[v0.2] enrich where the webhook is notification-grade** (Squarespace: `GET /1.0/commerce/orders/{id}` + `GET /1.0/commerce/transactions/{id}`; Stripe: expand `balance_transaction` for fee detail), normalize to canonical shape, POST to Phoenix `/api/v1/sale-events`. Every channel ingress scenario must attach a **Break error handler** to its HTTP module with a configured attempt count — Make does not retry HTTP modules natively. See `docs/integrations/make.md` and the per-channel docs under `docs/integrations/`. |
+| 2 | **Cross-channel matcher** | Schedule (~15 min) | Pull unmatched sale events from Phoenix; for each, look up the paired payment event in the source. **[v0.2] Note:** the deterministic forward direction is Squarespace's Transactions API publishing the Stripe `ch_...`; the reverse direction (Stripe carrying the upstream order id) is not guaranteed. TicketTailor ↔ Stripe deterministic correlation is unverified pending issue #3/#29 — heuristic fallback until then. |
+| 3 | **Xero-write** | HTTP webhook (Phoenix calls it on approval) | Build a Xero invoice payload from the approved Sale Event, post to Xero **as `ACCREC AUTHORISED`** (DRAFT invoices do not decrement tracked inventory), send result back to Phoenix. Mandatory Break handler with at least 3 attempts on the Xero HTTP module. |
 | 4 | **Inventory-snapshot** | Schedule (~hourly) | Pull all tracked items from Xero, POST a full snapshot to Phoenix. |
 | 5 | **Reconciliation sweep** | Schedule (daily) | Pull Stripe/Square payouts from Xero's bank feed view; pull recent events from each source as a safety net for missed webhooks; POST any gaps to Phoenix. |
 
@@ -115,6 +117,8 @@ flowchart LR
 
 ### Flow 1 — Sale ingestion from a single-channel sale (Squarespace)
 
+**[v0.2] Corrected:** Squarespace's `order.create` webhook ships only `{ orderId }` — Make must enrich via two GETs. The deterministic Stripe correlation runs from Squarespace's Transactions API (which publishes the Stripe `ch_...`), not from Stripe's `Charge.metadata` (which channels are not guaranteed to populate). See `docs/integrations/squarespace.md` and `docs/integrations/stripe.md`.
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -129,18 +133,24 @@ sequenceDiagram
     Customer->>Squarespace: place order, pay
     Squarespace->>Stripe: create charge
     Stripe-->>Squarespace: charge succeeded
-    Squarespace->>Make: order.created webhook
-    Make->>Make: normalize to canonical shape<br/>(extract line items + SKUs)
-    Make->>Phoenix: POST /sale-events (channel=squarespace)
+    Squarespace->>Make: order.create webhook (just {orderId})
+    Make->>Squarespace: GET /1.0/commerce/orders/{id}<br/>(enrich line items, totals, customer)
+    Squarespace-->>Make: full Order resource
+    Make->>Squarespace: GET /1.0/commerce/transactions/{id}<br/>(capture Stripe ch_... via payments[].externalTransactionId)
+    Squarespace-->>Make: Transaction resource
+    Make->>Make: normalize to canonical shape<br/>(line items + SKUs + stripe_charge_id)
+    Make->>Phoenix: POST /sale-events (channel=squarespace,<br/>stripe_charge_id captured)
     Phoenix->>DB: upsert sale_event (idempotent on external id)
     Phoenix->>DB: resolve lines via channel_skus
     Phoenix-->>Make: 201 + sale_event id
 
     Note over Stripe,Make: Separately, Stripe charge.succeeded<br/>webhook fires the Stripe ingress scenario
     Stripe->>Make: charge.succeeded webhook
-    Make->>Phoenix: POST /sale-events (channel=stripe, metadata=squarespace_order_id)
+    Make->>Stripe: expand balance_transaction (fee detail)
+    Stripe-->>Make: charge + balance_transaction
+    Make->>Phoenix: POST /sale-events (channel=stripe, gross/fee/net)
     Phoenix->>DB: upsert, trigger correlation attempt
-    Phoenix->>Phoenix: id_match strategy succeeds<br/>(charge.metadata.order_id == squarespace event id)
+    Phoenix->>Phoenix: id_match strategy succeeds<br/>(squarespace event has stripe_charge_id == this charge.id)
     Phoenix->>DB: insert correlation (high confidence)
 
     Phoenix->>UI: PubSub broadcast: new event ready
@@ -267,6 +277,8 @@ flowchart TD
 
 ### 5.2 Correlation strategy ladder
 
+**[v0.2] Per-channel reality check:** the ladder works as drawn for Squarespace ↔ Stripe (deterministic via the Squarespace Transactions API). For **TicketTailor ↔ Stripe**, the deterministic path is unverified — TicketTailor's `payment_method.external_id` *probably* carries the Stripe `ch_...` or `pi_...` but this is filed for empirical confirmation (issues #3, #29). Until then, TicketTailor sales fall through to `amount_time_window` with `confidence: medium` and route to `needs_resolution` — the owner will see a "confirm fuzzy match" prompt on most TicketTailor sales until that one issue closes. Square and direct-Stripe sales correlate self-contained (sale-side and payment-side come from the same vendor).
+
 ```mermaid
 flowchart TD
     Start[Sale event needs correlation] --> S1{"id_match:<br/>does payment event ID appear<br/>explicitly on this event?"}
@@ -302,21 +314,24 @@ flowchart TD
 
 ### 5.4 Approval failure recovery
 
+**[v0.2] Corrected:** Make's HTTP module does **not** retry automatically. The retry behaviour shown below is provided by an explicit **Break error handler** attached to the HTTP module, with a configured attempt count and backoff. Without that handler, a single 5xx from Xero terminates the scenario run and the event is recoverable only via the daily sweep. See `docs/integrations/make.md` §Error handling.
+
 ```mermaid
 flowchart TD
     A[Owner clicks Approve] --> B[state: approved]
     B --> C[Dispatch to Make Xero-write webhook]
-    C --> D{Make scenario succeeds end-to-end?}
+    C --> D{HTTP module to Xero<br/>succeeds first try?}
     D -->|Yes — invoice posted| E[state: posted · audit entry · UI updates]
-    D -->|"No — Xero rejected (4xx)"| F[state: failed · capture Xero error]
-    D -->|"No — Make scenario error / 5xx"| G{Within Make retry budget?}
-    G -->|Yes| H[Make retries with backoff]
-    G -->|"No, exhausted"| I[state: failed · reason: 'integration error']
-    F --> J["owner sees error · fixes underlying issue<br/>(remap SKU, update item, etc.)"]
-    J --> K[owner clicks Retry · state: pending]
-    K --> A
-    I --> J
-    H --> D
+    D -->|"No — Xero 4xx (rejected)"| F[state: failed · capture Xero error]
+    D -->|"No — Xero 5xx / timeout"| G[Break handler catches error]
+    G --> H{Within Break attempt count?}
+    H -->|Yes| I["Retry with exponential backoff<br/>(configured in Break handler)"]
+    H -->|"No, exhausted"| J["state: failed · reason: 'integration error'<br/>execution stored in Incomplete Executions"]
+    I --> D
+    F --> K["owner sees error · fixes underlying issue<br/>(remap SKU, update item, etc.)"]
+    K --> L[owner clicks Retry · state: pending]
+    L --> A
+    J --> K
 ```
 
 ## 6. Reconciliation model — two sides
@@ -531,6 +546,12 @@ erDiagram
 
 - `sale_events`: `unique(source, external_event_id)` for idempotency; index on `(state, occurred_at)` for inbox queries; index on `(state_reason)` for filter chips.
 - `channel_skus`: `unique(source, external_id)`; partial index on rows where `item_id IS NULL` (the "unmapped" queue).
+
+**[v0.2] Data-protection requirements:**
+
+- `sale_events.raw_payload` (and any other column containing source webhook bodies) must be **encrypted at rest**. Stripe events carry `card.last4` and `billing_details` (name, postcode); Squarespace and Square payloads carry similar fields. We never see PAN/CVC, but the combination is identifying PII. Encryption at the DB or column level (e.g. Cloak with a managed key) is the bar.
+- Access control: `raw_payload` reads should be limited to the ingest + audit roles. Routine reporting queries must read normalized columns, never the raw body.
+- `tenant_id` column: every entity that touches Xero (`sale_events`, `items`, `channel_skus`, `xero_writes`, `payouts`) should carry a non-null `tenant_id` from day one even though v1 ships single-tenant. Retrofitting tenant-awareness onto a single-tenant schema is famously painful; the cost of adding it now is one column per table. See `docs/integrations/xero.md` Open Questions #14.
 - `correlations`: `unique(primary_sale_event_id)` and `unique(payment_sale_event_id)` to enforce "at most one correlation per side".
 - `xero_writes`: `unique(sale_event_id)` to enforce "at most one invoice per sale event"; `unique(xero_invoice_id)`.
 - `audit_log`: index on `(subject_type, subject_id, occurred_at)` for forensic queries.
@@ -548,6 +569,15 @@ All endpoints under `/api/v1`. JSON request/response. Bearer token auth (`Author
 | `POST` | `/inventory-snapshot` | Bulk-replace cached item stock. | Whole-snapshot replace; per-call ok to retry. |
 | `POST` | `/payouts` | Push payout records from Xero bank feed. | `unique(processor, external_payout_id)`. |
 | `POST` | `/xero-write-result` | Callback from Xero-write scenario with success/failure. | `unique(sale_event_id)` — once posted, second result is logged but ignored for state. |
+
+**[v0.2] Per-channel enrichment requirements before POSTing:**
+
+| Channel | Required Make-side enrichment before POST |
+|---|---|
+| TicketTailor | None — `order.created` webhook ships line items. |
+| Squarespace | `GET /1.0/commerce/orders/{id}` (line items) **and** `GET /1.0/commerce/transactions/{id}` (Stripe `ch_...`). |
+| Square | Re-fetch via `GET /v2/orders/{id}` recommended — webhook line-item presence unconfirmed (issue #40). |
+| Stripe | Expand `balance_transaction` on the charge (for `fee_cents`). Without this, `fee_cents` will be NULL. |
 
 Sample inbound payload (`POST /sale-events`):
 
@@ -598,16 +628,68 @@ Phoenix calls a single Make webhook URL. Make routes by `action`:
 
 ## 10. Operational concerns
 
-### Idempotency (four layers, see §5.4 for context)
+### Idempotency (five layers — **[v0.2] added Xero header**)
 
 1. `sale_events` unique on `(source, external_event_id)` — webhook re-deliveries no-op.
-2. `Idempotency-Key` header on every API call — short-lived dedupe cache.
+2. `Idempotency-Key` header on every Make→Phoenix call — short-lived dedupe cache.
 3. LiveView approve actions are state-guarded — re-clicking is a no-op.
-4. Xero `Invoice.Reference = "lbkmk:<sale_event.id>"` — Make checks for existing before creating.
+4. Xero `Invoice.Reference = "lbkmk:<sale_event.id>"` — Make checks for existing before creating (durable, the source-of-truth dedupe layer).
+5. **[v0.2]** Xero `Idempotency-Key` header on `POST /Invoices` (supported since 2023) — belt-and-braces alongside the Reference check. Retention window not publicly documented (issue #58); the Reference layer covers the long-tail.
+
+### Per-channel signature verification
+
+Signature schemes differ per channel. lbkmk verifies on the **raw body** before JSON parsing; Make forwards the raw body and the original signing header. See each channel's integration doc for the exact algorithm and canonicalization.
+
+| Channel | Header | Algorithm | Notes |
+|---|---|---|---|
+| TicketTailor | `Tickettailor-Webhook-Signature: t=<unix>,v1=<hmac>` | HMAC-SHA256 over `timestamp + raw_body` | Reject if `t` older than 5 minutes (replay window). |
+| Squarespace | `Squarespace-Signature: <hex hmac>` | HMAC-SHA256 over raw body, **with the secret hex-decoded to raw bytes** (passing the hex string silently produces a wrong signature). | — |
+| Stripe | `Stripe-Signature: t=<unix>,v1=<hex hmac>` | HMAC-SHA256 over `timestamp + raw_body` | Enforce 5-minute timestamp tolerance. |
+| Square | `x-square-hmacsha256-signature: <base64 hmac>` | HMAC-SHA256 over `notification_url + raw_body` (URL byte-for-byte vs registered string). Unique among the four — naive verifier for the others silently fails on Square. | URL canonicalization edge rewrites (trailing slash, www, HTTPS) break verification. |
+
+### Ingress ACK window (Square is the constraint)
+
+| Channel | Hard ACK window |
+|---|---|
+| TicketTailor | 30 s (then counted failed) |
+| Squarespace | ~10 s |
+| Stripe | ~30 s |
+| Square | **10 s** (strictest) |
+
+Phoenix `/sale-events` must respond 2xx within ~2 seconds for every channel, with enrichment performed in a background job. Do not attempt synchronous enrichment in the request thread.
+
+### Per-channel auto-disable thresholds and heartbeat alarms
+
+Each channel's failure-tolerance differs; the heartbeat alarm must be sized per channel, well below the cliff:
+
+| Channel | Warning | Auto-disable / deletion |
+|---|---|---|
+| TicketTailor | email at day 5 of continuous failure | disabled at day 10 (manual re-enable in dashboard) |
+| Squarespace | none | **silent deletion** after "multiple unsuccessful requests" (threshold unknown — issue #18). Most aggressive monitoring required because there's no signal until the subscription is gone. |
+| Stripe | email at first failure | does not auto-disable |
+| Square | warning emails at weeks 1, 2, 3 | disabled at 3 weeks (issue #41 to resolve 24h/72h/3-week doc inconsistency) |
+| Make hook (Make itself) | none | auto-disabled at 5 days if not attached to a scenario → `410 Gone` to channel |
+
+Heartbeat: page if no event of a given channel has arrived in N hours during business hours, N tuned per channel. Independently poll Make's `GET /hooks/:id` for each scenario's `queueCount`, `enabled`, and `gone` flags (issue #9 for `queueCount` granularity).
 
 ### Failure modes
 
 See §5.4 and Flow 4. The TL;DR: webhooks for happy path, scheduled sweep as safety net, no single point of data loss because each source keeps its own record of every event.
+
+### Per-channel footguns (**[v0.2]** — surfaced by integration research)
+
+Each row is a known failure mode the canonical-shape designs must defend against. Linked sources are the `docs/integrations/*.md` files.
+
+| # | Footgun | Source |
+|---|---|---|
+| F1 | Make egress IPs (3 per zone, rotating, shared across all Make customers) make IP-allowlisting Make on lbkmk's inbound side meaningless. Authentication contract is bearer token + per-channel HMAC over the forwarded raw body. | `make.md` |
+| F2 | Instant Make scenarios deactivate on the **first** error, not after `Number of consecutive errors`. Mitigation: every module in a webhook-triggered scenario must have a Break or Resume error handler attached. | `make.md` |
+| F3 | TicketTailor counts a delivery as failed immediately on any HTTP 3xx. Webhook URL configured at TicketTailor must match the receiving endpoint exactly — no edge redirects, no www-canonicalization, no trailing-slash normalization. | `tickettailor.md` |
+| F4 | Stripe webhook event order is **not** guaranteed. `payment_intent.succeeded`, `charge.succeeded`, `charge.refunded` can arrive in any order. State machines that branch on observed sequence are wrong — always re-derive state from `data.object`. | `stripe.md` |
+| F5 | Square `idempotency_key` lives in the **request body**, not in a header (unique among the four channels). Putting it in a header silently has no effect. | `square.md` |
+| F6 | Squarespace's hex secret must be byte-decoded before use as HMAC key. Every language's HMAC API will accept the hex string and silently produce a wrong signature. | `squarespace.md` |
+| F7 | Xero invoices posted with `Status: DRAFT` do **not** decrement tracked inventory. Must post as `AUTHORISED` to trigger the inventory decrement that is the whole point of the system. | `xero.md` |
+| F8 | TicketTailor "void issued ticket" invalidates one barcode without canceling the parent order and without issuing a refund — sub-order voids cannot be treated as Sale Event cancellations. Refund flow design (out of scope for v1) must account for this when v2 lands. | `tickettailor.md` |
 
 ### Deployment shape (high level — specifics chosen at deploy time)
 
@@ -624,28 +706,35 @@ See §5.4 and Flow 4. The TL;DR: webhooks for happy path, scheduled sweep as saf
 
 ## 11. What's explicitly **not** in scope (v1)
 
-| Not in scope | Reason | When to revisit |
-|---|---|---|
-| Refund / return flow | Volume low; manual in Xero is acceptable. | Once monthly refund volume > ~10. |
-| Multi-currency | USD only. | If LBK ever sells internationally. |
-| Multi-org / multi-tenant | Single LBK org. | Not foreseen. |
-| Multi-user roles | One operator. | When hiring second ops staff. |
-| Mobile UI | Desktop bookkeeper workflow. | If usage patterns shift. |
-| Analytics / BI dashboards | Xero already has reporting. | Not foreseen. |
-| Sync **from** Xero back to channels | Product catalog stays managed in channels. | If channels need centralized catalog management. |
-| Direct Phoenix → external APIs | Make owns all external API access. | Deliberate later decision, not drift. |
+| Not in scope | Reason | When to revisit | **[v0.2]** Reference for v2 |
+|---|---|---|---|
+| Refund / return flow | Volume low; manual in Xero is acceptable. | Once monthly refund volume > ~10. | Per-channel refund event shapes already documented across `docs/integrations/{stripe,squarespace,square,tickettailor,xero}.md` — no fresh research needed at v2. Xero shape will be `ACCRECCREDIT` credit notes per `xero.md`. |
+| Multi-currency | GBP only. | If LBK sells in other currencies. | Xero multi-currency requires Premium plan (issue #62). `xero.md` documents the FX-at-posting flow. |
+| Multi-org / multi-tenant | Single LBK org. | Not foreseen. | `tenant_id` column is added now (§8) so a future second tenant doesn't require a migration. |
+| Multi-user roles | One operator. | When hiring second ops staff. | — |
+| Mobile UI | Desktop bookkeeper workflow. | If usage patterns shift. | — |
+| Analytics / BI dashboards | Xero already has reporting. | Not foreseen. | — |
+| Sync **from** Xero back to channels | Product catalog stays managed in channels. | If channels need centralized catalog management. | — |
+| Direct Phoenix → external APIs | Make owns all external API access. | Deliberate later decision, not drift. | Xero is the candidate exception — `xero.md` notes that for a single direct integration with no transformation, the Make-as-transformer benefit is thin. Revisit if Make's Xero connector ever becomes a constraint. |
 
 ## 12. Open questions (must close before implementation starts)
 
-| # | Question | Affects | Owner |
-|---|---|---|---|
-| Q1 | Does TicketTailor expose line items in webhooks/API, or do we need enrichment? | Line-item ingestion code path; potential extra Make API ops cost | Phase 0 spike |
-| Q2 | Are Xero bank feeds active for Stripe and Square already? | Whether our invoices reconcile against existing deposits or risk duplicates | Owner / accountant |
-| Q3 | Are existing Xero items tracked or untracked? | Onboarding scope: conversion + seeding | Owner / accountant |
-| Q4 | Per-event ticket types: separate Inventory Items per event, or reused? | Domain model: §4.2 Inventory Item assumes per-event | Owner |
-| Q5 | What's the expected monthly transaction volume across all channels? | Make.com plan sizing; Phoenix capacity | Owner |
-| Q6 | Vocabulary alignment (see domain model §7) | UI labels and documentation tone | Owner review |
-| Q7 | Hosting target preference (Fly.io / Railway / Render / self-host) | Deploy script and secrets management | Owner / ops |
+**[v0.2] Status update:** Q1 resolved by integration research. Q2 elevated to top — it gates the posting strategy and the answer is almost certainly "yes, feeds are wired" but the bank-rule configuration in LBK's Xero tenant is the load-bearing detail. Q5 has a planning estimate now. Six new integration-research questions surfaced 63 issues on GitHub (#2–#64, all labeled `question`) — those are the empirical follow-ups, not blocking design.
+
+| # | Question | Status | Affects | Owner |
+|---|---|---|---|---|
+| Q2 | **Are Xero bank feeds active for Stripe and Square already, and what bank rules are configured against them?** | **Open — blocking.** Almost certainly yes (Xero offers an official Stripe direct feed and Square integration). The risk is **double-counting**: if a Xero bank rule auto-categorises a feed deposit as revenue while lbkmk also posts a revenue-crediting Invoice, the books are doubled. Issue #51. | Whether our invoices reconcile against existing deposits or risk duplicates. The entire posting strategy depends on this. | Owner / accountant |
+| Q3 | Are existing Xero items tracked or untracked? Is the LBK Xero plan Standard+ (tracked inventory) or Premium (multi-currency)? | Open. Issue #55. | Onboarding scope: conversion + seeding. Whether lbkmk's catalog can sync at all. | Owner / accountant |
+| Q4 | Per-event ticket types: separate Inventory Items per event, or reused? | Open. Recommendation: per-event (clear stock semantics). Issue #53. | Domain model: §4.2 Inventory Item assumes per-event. | Owner |
+| Q5 | What's the expected monthly transaction volume across all channels? | **Planning estimate:** ~300 sales/month × ~4 Make modules/event = **~2,200 credits/month**. Well under Core (10k). Pro upgrade is feature-driven (priority execution, log search), not credit-count driven. | Make.com plan sizing; Phoenix capacity. | Owner — confirm volume range, not Make plan choice. |
+| Q6 | Vocabulary alignment (see domain model §7). | Open. | UI labels and documentation tone. | Owner review |
+| Q7 | Hosting target preference (Fly.io / Railway / Render / self-host). | Open. | Deploy script and secrets management. | Owner / ops |
+| Q1 | ~~Does TicketTailor expose line items in webhooks/API?~~ | **Resolved.** `order.created` and `order.updated` ship full `line_items[]` + `issued_tickets[]` — no enrichment call needed. See `docs/integrations/tickettailor.md`. | — | — |
+
+**Tier-2 questions (filed as GitHub issues, do not block Phase 1 design):** 63 per-tool questions live as GitHub issues #2–#64. Most resolve in a single empirical-test session against LBK's live Stripe Dashboard, Xero tenant, and one Square Sandbox sign-up. Highest-leverage:
+
+- **Issue #29** (and #3): TicketTailor's `payment_method.external_id` shape — turns TT↔Stripe correlation from heuristic to deterministic in one observation.
+- **Issues #28, #36, #50, #59**: capture one real LBK Squarespace order envelope + Stripe Dashboard view of one Squarespace-originated charge + Xero bank-feed inventory + Square Sandbox order — resolves ~10 questions in 1–2 hours.
 
 ## 13. Proposed delivery phases (high level)
 
