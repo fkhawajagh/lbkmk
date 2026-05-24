@@ -343,11 +343,11 @@ Reconciliation is the load-bearing feature of this system, and the docs that cam
 
 ```mermaid
 flowchart LR
-    Make_Ingress[Make: source-ingress scenarios] --> K1[Kind 1<br/>sale ↔ payment]
-    Make_Ingress --> K2[Kind 2<br/>lines ↔ gross]
-    Owner((Owner clicks approve)) --> K3[Kind 3<br/>sale → Xero invoice]
+    Make_Ingress[Make: source-ingress scenarios] --> K1["Kind 1<br/>sale ↔ payment"]
+    Make_Ingress --> K2["Kind 2<br/>lines ↔ gross"]
+    Owner((Owner clicks approve)) --> K3["Kind 3<br/>sale → Xero invoice"]
     K3 --> Make_Xero[Make: Xero-write scenario]
-    Make_Sweep[Make: reconciliation sweep] --> K4[Kind 4<br/>invoices ↔ payout]
+    Make_Sweep[Make: reconciliation sweep] --> K4["Kind 4<br/>invoices ↔ payout"]
     K1 -. "feeds approval readiness" .-> K3
     K2 -. "feeds approval readiness" .-> K3
     K3 -. "produces the invoices that<br/>kind 4 sums" .-> K4
