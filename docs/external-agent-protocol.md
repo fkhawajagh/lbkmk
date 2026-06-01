@@ -1,11 +1,12 @@
 ---
 title: External Agent Protocol
-version: "1.0"
+version: "1.11"
 date: 2026-05-22
+updated: 2026-06-01
 status: active
 ---
 
-> **Document Version: 1.0** | 2026-05-22
+> **Document Version: 1.11** | Updated 2026-06-01
 
 # External Agent Protocol
 
@@ -61,6 +62,26 @@ Final commits stay local. The main session orchestrator pushes the branch and op
 
 Commit messages must not include a `Co-Authored-By: Claude` (or any AI-attribution) trailer. Global preference — see the user's `~/.claude/CLAUDE.md`.
 
+### 2.5 No `git add` of gitignored paths
+
+`docs/.context/` is gitignored intentionally. Status reports, checkpoint files, code-review feedback, segment slices, gate state, and `kimi-run-*.log` files live there as local-only worktree artefacts. The orchestrator reads them locally before merge; they are not part of the PR's diff. Do not `git add` or `git add -f` any file under `docs/.context/`. This applies to:
+
+- `docs/.context/<feature>/final-status.md`
+- `docs/.context/<feature>/checkpoint-*.md`
+- `docs/.context/<feature>/checkpoint-*-feedback.md`
+- `docs/.context/<feature>/code-review-feedback*.md`
+- `docs/.context/<feature>/kimi-run-*.log`
+- `docs/.context/<feature>/slice-seg-*.md`
+- `docs/.context/<feature>/review-seg-*.verdict`
+- `docs/.context/<feature>/approval-seg-*`
+- `docs/.context/<feature>/checkpoint-seg-*.md`
+- `docs/.context/<feature>/logs/activity.log` and `docs/.context/<feature>/logs/*.log`
+- any other file the orchestrator may add to that directory between dispatches
+
+The same rule applies to any other gitignored path (e.g. `.env*` other than `.env.example`, `_build/`, `deps/`). If a status report needs to be visible on `main` after merge, it goes to a committed handoff doc at `docs/handoff/YYYY-MM-DD-<branch>.md` (see "Handoff Documents" in `CLAUDE.md`) — the implementer never reaches into `docs/handoff/`.
+
+If a write to a gitignored path is needed (e.g. updating `final-status.md` mid-task), make the edit and do NOT stage or commit it. Reaching for `git add -f` to bypass `.gitignore` is a protocol violation regardless of the file's contents — stop and surface it in the status report.
+
 ---
 
 ## 3. In-Flight Checkpoints
@@ -78,6 +99,12 @@ If the plan does not include checkpoints and the work has 4+ substantive tasks, 
 ### 3.1 Checkpoint files separate self-applied fixes from original task work
 
 The checkpoint status report has two audiences: the orchestrator (deciding what to review) and the agent on resume (regaining context). When the agent self-applies a fix between the original implementation and the checkpoint write, the checkpoint file separates the original Tasks N work from the post-Tasks-N self-fix in distinct sections. The orchestrator can then review the self-fix on its own merits without re-deriving what changed. A "Code Review Finding (Post-Checkpoint)" subsection naming the affected files, the symptom, and the chosen fix is the canonical shape.
+
+### 3.2 Segment-dispatched plans make the checkpoint structural
+
+For a plan dispatched in segment slices (`bin/dispatch-kimi --segment N <plan> <worktree>`), the "STOP at the checkpoint" guarantee is structural, not a soft instruction. The agent physically receives only the current segment's slice (`docs/.context/<branch>/slice-seg-N.md`), so there is no later task in context to drift into. Each segment ends by writing its own checkpoint report to `docs/.context/<branch>/checkpoint-seg-N.md`: the per-segment form of §3, citing that segment's commit range.
+
+Advancing to segment N requires, for segment N-1, a sha-pinned PASS review verdict and an approval, both pinned to the current branch HEAD; the dispatcher's gate refuses the next segment until the orchestrator records them. Re-opening segment N invalidates all review and approval state from N forward. The agent does not manage the gate: it implements one slice, writes `checkpoint-seg-N.md`, and stops. See §15.4 for the dispatcher modes.
 
 ---
 
@@ -307,6 +334,10 @@ Cheapest catch: read the test as if you've never seen the code under test. Does 
 
 Section §9.2 covers the old name (sweep for stale references to the deleted symbol). The complement: after renaming `foo → bar`, also run `git grep -n 'bar' lib test docs` to confirm the new symbol is referenced where it should be — and that comments / docstrings / test descriptions around the new name still accurately describe the renamed function's current behaviour. Catches the "renamed the function but the moduledoc still describes the old behaviour" failure mode.
 
+### 9.7 Keep mermaid diagrams current
+
+If your change alters something a mermaid diagram in a design or plan doc depicts — a state machine, entity relationship, sequence/data flow, or dependency the diagram shows — update the diagram in the same change so it matches the code. If the stale diagram lives in a doc outside your task scope, flag it in your status report (§12 → Self-Review Concerns) rather than leaving it silently drifted. A passing build never catches a diagram that has drifted from the code.
+
 ---
 
 ## 10. Branch Hygiene
@@ -406,6 +437,7 @@ The status report is the orchestrator's primary input for deciding what to revie
 ## 13. References
 
 - `CLAUDE.md` (project) — project identity, stack, conventions
+- `AGENTS.md` (repo root) — agent-side operative subset of `CLAUDE.md` for non-Claude external agents
 - `~/.claude/CLAUDE.md` (user global) — Core Principles, Code Style, Security, Trust Boundary, Model Routing Policy
 - `~/.dotfiles/rules/elixir/coding-style.md` — Elixir-specific style rules (if/when an Elixir codebase exists)
 - `docs/handoff/README.md` — handoff document convention and skeleton
@@ -424,6 +456,11 @@ To add a rule:
 3. Update `CLAUDE.md` if the rule affects ongoing lbkmk conventions, not just external-agent execution.
 4. Commit on a separate PR — protocol changes should not be bundled with implementation work.
 
+### Changelog
+
+- **1.11 (2026-06-01)** — Backported the generic sections from the Iris external-agent protocol v1.11 needed to support segment-dispatched plans: §2.5 (no `git add` of gitignored paths), §3.2 (segment-dispatched plans make the checkpoint structural), §9.7 (keep mermaid diagrams current), §15.2 (rewritten — `AGENTS.md` is authoritative for Kimi), and §15.4 (segment-sliced dispatch). The version jumps from 1.0 to 1.11 to track the Iris source version. Iris's Ash/Gusto/Clerk-specific sections (Iris §2.5 `authorize?: false`, §4.4 `mix ash.codegen` migrations, §4.6 `Ash.Changeset` helpers, §4.7 `Ash.read_one!`, §6.1–6.4 and §6.7 Ash security rules) are intentionally omitted — lbkmk does not use Ash. Section numbers are lbkmk's own and do not all line up with Iris's.
+- **1.0 (2026-05-22)** — Initial lbkmk external-agent protocol.
+
 ---
 
 ## 15. Kimi-Specific Notes
@@ -439,10 +476,19 @@ In Kimi, plugin skills use hyphens, not colons:
 
 When a plan references a skill by its canonical Claude form, Kimi's harness resolves it — no rewriting in the plan required.
 
-### 15.2 Authoritative project doc for Kimi
+### 15.2 AGENTS.md is authoritative for Kimi
 
-The dispatch-kimi kickoff instructs Kimi to read `CLAUDE.md` at the repo root. If a future `AGENTS.md` is added to mirror the operative subset of `CLAUDE.md` for non-Claude agents, update the script accordingly. Until then, `CLAUDE.md` is the single project-doc source.
+`AGENTS.md` at the repo root mirrors the operative subset of `CLAUDE.md` for non-Claude agents, and the `bin/dispatch-kimi` kickoff instructs Kimi to read it on dispatch. If `AGENTS.md` and `CLAUDE.md` diverge in ways that affect the task at hand, surface the divergence in the status report — do not pick one and proceed silently. The orchestrator decides whether to reconcile the docs or adjust the task.
 
 ### 15.3 Tool surface differences
 
 Kimi's tool set is distinct from Claude Code's. The protocol mandates behaviour — worktree scope, status report, no push, no PR — not specific tools. If a plan task assumes a Claude-specific tool (e.g., an `Agent` subdispatch, a particular MCP server, a Claude-only skill), surface the gap in the status report rather than improvising an equivalent.
+
+### 15.4 Segment-sliced dispatch
+
+For large plans, the orchestrator dispatches one segment at a time so a single run cannot skip a checkpoint (§3.2). The relevant `bin/dispatch-kimi` modes:
+
+- `bin/dispatch-kimi --segment N <plan> <worktree>` dispatches only segment N: it purges review/approval state for segments at or after N, gates on segment N-1's approval (for N greater than 1), cuts `[shared-context] + [Segment N]` into `docs/.context/<branch>/slice-seg-N.md`, and hands the agent only that slice.
+- `bin/dispatch-kimi --review --segment N <feedback> <worktree>` re-dispatches segment N with review feedback, reusing the existing `slice-seg-N.md`. Plain `--review` without `--segment` is not accepted.
+
+A segmented plan is a single file whose tasks are grouped under `## Segment N` headings, contiguous from 1 (the dispatcher validates this and refuses a plan with gaps or duplicates). Per-segment artefacts live under `docs/.context/<branch>/`: the slice (`slice-seg-N.md`), the gate state (`review-seg-N.verdict`, `approval-seg-N`), the checkpoint report (`checkpoint-seg-N.md`), and run/activity logs under `docs/.context/<branch>/logs/`. All are gitignored (§2.5). Each segment requires the agent to write `checkpoint-seg-N.md` after its commits land and STOP, exactly as §3 specifies, scoped to that segment.

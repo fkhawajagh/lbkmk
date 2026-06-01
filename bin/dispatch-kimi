@@ -1,43 +1,115 @@
 #!/usr/bin/env zsh
-# bin/dispatch-kimi — dispatch an implementation task to Kimi via kimi-ecc.
+# bin/dispatch-kimi: dispatch an implementation or plan-writing task to Kimi via kimi-ecc.
 #
-# See docs/external-agent-protocol.md for the rules Kimi follows once dispatched.
+# Segment-dispatch flow, gating, and per-segment artefacts are documented in
+# docs/external-agent-protocol.md (§3.2 structural checkpoints, §15.4 segment-sliced
+# dispatch). That document also carries the full set of rules Kimi follows once dispatched.
 
 set -euo pipefail
+
+# Resolve the bin/ directory so helpers can be called regardless of cwd.
+SCRIPT_BIN="${0:A:h}"
+WF_LOG="${SCRIPT_BIN}/wf-log"
+WF_EXTRACT="${SCRIPT_BIN}/wf-extract-segment"
 
 usage() {
   cat >&2 <<'EOF'
 Usage:
   bin/dispatch-kimi <plan_path> <worktree_path>
-  bin/dispatch-kimi --review <feedback_path> <worktree_path>
+  bin/dispatch-kimi --segment N <plan_path> <worktree_path>
+  bin/dispatch-kimi --review --segment N <feedback_path> <worktree_path>
+  bin/dispatch-kimi --plan <design_doc_path> <worktree_path> <output_plan_path>
 
-Initial dispatch: hands the plan at <plan_path> to Kimi running in <worktree_path>.
-Review round:    hands the findings at <feedback_path> to Kimi for follow-up.
+Initial dispatch:       hands the whole plan to Kimi running in <worktree_path>.
+Segment dispatch:       invalidates M>=N artifacts, gates on prior segment approval,
+                        cuts the plan slice, and dispatches segment N to Kimi.
+Segment review:         reuses the existing slice-seg-N.md (from the prior --segment N
+                        dispatch), then dispatches feedback+slice for that segment only.
+                        If the slice is absent, the command refuses with exit 66.
+                        Plain --review (no --segment) is not accepted.
+Plan writing:           hands the design doc to Kimi to WRITE the implementation plan
+                        to <output_plan_path>, applying the writing-plans lessons.
+                        Kimi writes the plan; it does not execute it. The
+                        orchestrator's Opus review still gates the result.
 
-Both paths can be absolute or relative to the current directory.
+<N> must be a positive integer.
+
+Paths can be absolute or relative to the current directory. In --plan mode the
+output plan path must resolve to a location inside the worktree.
 
 Exit codes:
-  0  Kimi exited 0 AND at least one new commit landed on the branch.
-  2  Kimi exited 0 but made no commits (Kimi declined to act; read the status report).
-  3  Protocol violation: branch was pushed to origin (Kimi should not push).
-  64 Usage error.
-  *  Kimi's non-zero exit code, propagated.
+  0   Kimi exited 0 AND at least one new commit landed on the branch.
+  2   Kimi exited 0 but made no commits (declined to act / no draft; read the log).
+  3   Protocol violation: branch was pushed to origin (Kimi should not push).
+  64  Usage error.
+  65  Structural error (bad segment numbering or N out of range in the plan).
+  66  Gate refused (prior segment not approved at current HEAD); or slice absent
+      (review-segment: the prior --segment N dispatch was never run).
+  *   Kimi's non-zero exit code, propagated.
 EOF
   exit 64
 }
 
+# ---------------------------------------------------------------------------
+# validate_segment_n: confirm N is a positive integer.
+# Guards against set -u abort when --segment is given with no following value:
+# callers pass N through ${N:-} so the empty string reaches here, not an
+# unbound-variable crash.
+# ---------------------------------------------------------------------------
+validate_segment_n() {
+  local n="$1"
+  if [[ -z "$n" ]]; then
+    echo "Error: --segment requires a value (positive integer)." >&2
+    exit 64
+  fi
+  if [[ ! "$n" =~ '^[0-9]+$' ]] || (( n <= 0 )); then
+    echo "Error: --segment value must be a positive integer, got: $n" >&2
+    exit 64
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
 mode="initial"
-if [[ "${1:-}" == "--review" ]]; then
-  mode="review"
-  shift
-fi
+segment_n=""
 
-if (( $# != 2 )); then
-  usage
-fi
+case "${1:-}" in
+  --segment)
+    mode="segment"
+    segment_n="${2:-}"
+    validate_segment_n "$segment_n"
+    shift 2
+    ;;
+  --review)
+    # --review MUST be followed by --segment N. Plain --review is rejected at
+    # parse time before any file is touched, per design §6.2.
+    if [[ "${2:-}" != "--segment" ]]; then
+      echo "Error: --review requires --segment N (plain --review is not accepted)." >&2
+      echo "  Use: bin/dispatch-kimi --review --segment N <feedback_path> <worktree_path>" >&2
+      exit 64
+    fi
+    mode="review-segment"
+    segment_n="${3:-}"
+    validate_segment_n "$segment_n"
+    shift 3
+    ;;
+  --plan)
+    mode="plan"
+    shift
+    ;;
+esac
 
-input_path="$1"
-worktree="$2"
+if [[ "$mode" == "plan" ]]; then
+  (( $# == 3 )) || usage
+  input_path="$1"
+  worktree="$2"
+  output_path="$3"
+else
+  (( $# == 2 )) || usage
+  input_path="$1"
+  worktree="$2"
+fi
 
 if [[ ! -f "$input_path" ]]; then
   echo "Error: input path does not exist or is not a file: $input_path" >&2
@@ -62,6 +134,208 @@ fi
 # Compute relative path of input within the worktree (for the prompt).
 input_rel="${input_abs#${worktree_abs}/}"
 
+# Plan mode: resolve the output plan path and require it to live inside the
+# worktree (Kimi writes the plan there, never outside its scope). Also locate
+# the writing-plans lessons the kickoff points Kimi at.
+if [[ "$mode" == "plan" ]]; then
+  output_abs="${output_path:A}"
+  if [[ "$output_abs" != "${worktree_abs}/"* ]]; then
+    echo "Error: --plan output path must resolve inside the worktree." >&2
+    echo "  output:   ${output_abs}" >&2
+    echo "  worktree: ${worktree_abs}" >&2
+    exit 64
+  fi
+  if [[ ! -d "${output_abs:h}" ]]; then
+    echo "Error: --plan output directory does not exist: ${output_abs:h}" >&2
+    exit 64
+  fi
+  lessons_dir="${HOME}/.claude/skills/writing-plans/lessons"
+  if [[ ! -d "$lessons_dir" ]]; then
+    echo "Warning: writing-plans lessons dir not found: ${lessons_dir}" >&2
+    echo "  Kimi will write without lesson context; the orchestrator review still applies them." >&2
+  fi
+fi
+
+# ctx_dir for segment mode (computed here so purge/gate/cut can use it).
+ctx_dir="${worktree_abs}/docs/.context/${current_branch}"
+
+# ---------------------------------------------------------------------------
+# Segment purge: delete review-seg-M.verdict and approval-seg-M for all M >= N.
+# NUMERIC comparison on the full integer (never glob/suffix/lexical).
+# §0.3.1: re-opening N=10 must keep seg-1 and seg-2 (M < 10 → not purged),
+# even though "seg-1" is a lexical prefix of "seg-10".
+# Uses (N) null-glob qualifier so zero-match does not abort under set -e. §0.3.6
+# ---------------------------------------------------------------------------
+purge_segments_from() {
+  local n="$1"
+  local ctx="$2"
+
+  # Enumerate verdict files. The (N) qualifier expands a non-matching glob to
+  # nothing (empty list) rather than erroring; essential under set -euo pipefail.
+  for f in "${ctx}"/review-seg-*.verdict(N); do
+    # Extract the segment number from the filename: review-seg-M.verdict
+    local base="${f:t}"              # e.g. "review-seg-7.verdict"
+    local m="${base#review-seg-}"    # e.g. "7.verdict"
+    m="${m%.verdict}"                # e.g. "7"
+    # Only delete if M is a valid integer and M >= N (numeric, never lexical).
+    if [[ "$m" =~ '^[0-9]+$' ]] && (( m >= n )); then
+      rm -f "$f"
+    fi
+  done
+
+  # Enumerate approval files. Same (N) null-glob guard.
+  for f in "${ctx}"/approval-seg-*(N); do
+    local base="${f:t}"              # e.g. "approval-seg-7"
+    local m="${base#approval-seg-}"  # e.g. "7"
+    # Only delete if M is a valid integer and M >= N (numeric, never lexical).
+    if [[ "$m" =~ '^[0-9]+$' ]] && (( m >= n )); then
+      rm -f "$f"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Segment gate: for N > 1, verify that segment N-1 has a PASS verdict and an
+# approval, both sha-pinned to the current HEAD.
+# §0.3.3: reads shas with "read -r" (builtin strips trailing newline) rather
+# than a raw whole-file slurp that would retain the \n written by wf-log and
+# compare "<sha>\n" != "<sha>".
+# §0.3.6: exits 66 cleanly on absent file or sha mismatch; never crashes
+# under set -e.
+# ---------------------------------------------------------------------------
+gate_segment() {
+  local n="$1"
+  local ctx="$2"
+  local worktree="$3"
+
+  # N == 1: no prior segment to check.
+  (( n > 1 )) || return 0
+
+  local prev=$(( n - 1 ))
+  local head_sha
+  head_sha=$(git -C "$worktree" rev-parse HEAD)
+
+  local verdict_file="${ctx}/review-seg-${prev}.verdict"
+  local approval_file="${ctx}/approval-seg-${prev}"
+
+  # Guard absent verdict file: do NOT attempt "read" on a non-existent file
+  # under set -e (that would abort rather than refuse cleanly). §0.3.6
+  if [[ ! -f "$verdict_file" ]]; then
+    "$WF_LOG" activity "$ctx" dispatch-kimi "seg-${n}" gate.refused \
+      "verdict for seg-${prev} is absent" 2>/dev/null || true
+    echo "Error: gate refused: verdict for segment ${prev} is absent." >&2
+    echo "  Expected: ${verdict_file}" >&2
+    exit 66
+  fi
+
+  # Read verdict first token and sha. "read -r" strips the trailing newline
+  # written by wf-log so the sha is comparable to rev-parse HEAD. §0.3.3
+  # "|| true" prevents set -e from aborting when the file has no trailing
+  # newline (hand-edited artifact); the comparison below still refuses. §0.3.6
+  local verdict_token verdict_sha
+  read -r verdict_token verdict_sha < "$verdict_file" || true
+
+  if [[ "$verdict_token" != "PASS" ]]; then
+    "$WF_LOG" activity "$ctx" dispatch-kimi "seg-${n}" gate.refused \
+      "verdict for seg-${prev} is ${verdict_token}, not PASS" 2>/dev/null || true
+    echo "Error: gate refused: segment ${prev} verdict is '${verdict_token}', not PASS." >&2
+    exit 66
+  fi
+
+  if [[ "$verdict_sha" != "$head_sha" ]]; then
+    "$WF_LOG" activity "$ctx" dispatch-kimi "seg-${n}" gate.refused \
+      "verdict sha mismatch for seg-${prev}" 2>/dev/null || true
+    echo "Error: gate refused: verdict sha for segment ${prev} does not match HEAD." >&2
+    echo "  verdict sha: ${verdict_sha}" >&2
+    echo "  HEAD sha:    ${head_sha}" >&2
+    exit 66
+  fi
+
+  # Guard absent approval file. §0.3.6
+  if [[ ! -f "$approval_file" ]]; then
+    "$WF_LOG" activity "$ctx" dispatch-kimi "seg-${n}" gate.refused \
+      "approval for seg-${prev} is absent" 2>/dev/null || true
+    echo "Error: gate refused: approval for segment ${prev} is absent." >&2
+    echo "  Expected: ${approval_file}" >&2
+    exit 66
+  fi
+
+  # Read approval token and sha. "read -r" strips the trailing newline. §0.3.3
+  # "|| true" prevents set -e from aborting when the file has no trailing
+  # newline (hand-edited artifact); the comparisons below still refuse. §0.3.6
+  local approval_token approval_sha
+  read -r approval_token approval_sha < "$approval_file" || true
+
+  if [[ "$approval_token" != "APPROVED" ]]; then
+    "$WF_LOG" activity "$ctx" dispatch-kimi "seg-${n}" gate.refused \
+      "approval token for seg-${prev} is ${approval_token}, not APPROVED" 2>/dev/null || true
+    echo "Error: gate refused: approval token for segment ${prev} is '${approval_token}', not APPROVED." >&2
+    exit 66
+  fi
+
+  if [[ "$approval_sha" != "$head_sha" ]]; then
+    "$WF_LOG" activity "$ctx" dispatch-kimi "seg-${n}" gate.refused \
+      "approval sha mismatch for seg-${prev}" 2>/dev/null || true
+    echo "Error: gate refused: approval sha for segment ${prev} does not match HEAD." >&2
+    echo "  approval sha: ${approval_sha}" >&2
+    echo "  HEAD sha:     ${head_sha}" >&2
+    exit 66
+  fi
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Segment cut: run wf-extract-segment and write slice-seg-N.md.
+# §0.3.2: uses truncating > redirect (never appending >>) so re-cut
+# replaces the stale slice rather than concatenating onto it.
+# ---------------------------------------------------------------------------
+cut_segment() {
+  local n="$1"
+  local plan="$2"
+  local ctx="$3"
+
+  mkdir -p "$ctx"
+  # Truncating redirect: a second cut on the same N overwrites the file. §0.3.2
+  "$WF_EXTRACT" "$plan" "$n" > "${ctx}/slice-seg-${n}.md"
+}
+
+# ---------------------------------------------------------------------------
+# Segment and review-segment mode: purge -> gate -> cut/verify -> (optionally) kickoff.
+# ---------------------------------------------------------------------------
+if [[ "$mode" == "segment" || "$mode" == "review-segment" ]]; then
+  n="$segment_n"
+
+  # Step 1: Invalidate (purge M >= N artifacts, numeric comparison). §0.3.1
+  purge_segments_from "$n" "$ctx_dir"
+
+  # Step 2: Gate (N > 1: verify prior segment approved at HEAD). §0.3.3
+  gate_segment "$n" "$ctx_dir" "$worktree_abs"
+
+  # Step 3: Cut or verify the slice.
+  if [[ "$mode" == "segment" ]]; then
+    # segment: cut the slice from the plan (truncating redirect, idempotent). §0.3.2
+    cut_segment "$n" "$input_abs" "$ctx_dir"
+  else
+    # review-segment: reuse the slice from the original --segment N dispatch.
+    # Design 6.2: review reuses slice-seg-N.md; it is NOT re-cut (the review
+    # input is feedback, not a plan). If the slice is absent the operator never
+    # ran --segment N, so refuse with an actionable error.
+    if [[ ! -f "${ctx_dir}/slice-seg-${n}.md" ]]; then
+      echo "Error: no slice for segment ${n}; ${ctx_dir}/slice-seg-${n}.md is absent." >&2
+      echo "  Run: bin/dispatch-kimi --segment ${n} <plan> <worktree> first." >&2
+      exit 66
+    fi
+  fi
+
+  # WF_DRY_RUN=1: testable seam. Exit after purge/gate/cut without running Kimi,
+  # so the gate/purge/cut logic can be exercised without invoking kimi-ecc.
+  # Intentional and load-bearing; preserve it when a test harness is added.
+  if [[ "${WF_DRY_RUN:-}" == "1" ]]; then
+    exit 0
+  fi
+fi
+
 # Commit baseline (for the "did Kimi make commits" check at the end).
 baseline_sha=$(git -C "$worktree_abs" rev-parse HEAD)
 
@@ -71,11 +345,20 @@ baseline_sha=$(git -C "$worktree_abs" rev-parse HEAD)
 baseline_remote_sha=$(git -C "$worktree_abs" ls-remote origin "refs/heads/${current_branch}" 2>/dev/null | awk '{print $1}' || true)
 
 # Log destination, scoped by branch so runs do not collide across worktrees.
+# Segment and review-segment modes write logs to the logs/ subdir (design §8);
+# other modes use the flat ctx_dir as before.
 timestamp=$(date +%Y%m%d-%H%M%S)
-log_dir="${worktree_abs}/docs/.context/${current_branch}"
+if [[ "$mode" == "segment" || "$mode" == "review-segment" ]]; then
+  log_dir="${ctx_dir}/logs"
+else
+  log_dir="${worktree_abs}/docs/.context/${current_branch}"
+fi
 mkdir -p "$log_dir"
 log_file="${log_dir}/kimi-run-${timestamp}.log"
 
+# ---------------------------------------------------------------------------
+# Build the kickoff prompt.
+# ---------------------------------------------------------------------------
 if [[ "$mode" == "initial" ]]; then
   kickoff=$(cat <<KICKOFF
 You are an external implementation agent for the lbkmk project.
@@ -85,7 +368,7 @@ PLAN: ${input_rel}
 
 INSTRUCTIONS:
 1. cd to the working directory first. Confirm with \`pwd\` and \`git branch --show-current\`.
-2. Read CLAUDE.md at the repo root.
+2. Read AGENTS.md at the repo root.
 3. Read docs/external-agent-protocol.md in full.
 4. Read the plan at ${input_rel}.
 5. Execute the plan. Follow the protocol exactly.
@@ -93,32 +376,96 @@ INSTRUCTIONS:
 7. When complete (or stopped at a checkpoint), write the status report to the path the plan specifies (typically docs/handoff/<date>-<branch>.md).
 8. Exit.
 
-FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption — STOP, write what you observed to the status report, and exit. Do not guess.
+FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption: STOP, write what you observed to the status report, and exit. Do not guess.
 KICKOFF
 )
-else
+elif [[ "$mode" == "plan" ]]; then
   kickoff=$(cat <<KICKOFF
-You are an external implementation agent for the lbkmk project, addressing review findings from a previous round.
+You are an external plan-writing agent for the lbkmk project. Your job is to WRITE an implementation plan from a design doc, not to execute one.
 
 WORKING DIRECTORY: ${worktree_abs}
-FEEDBACK: ${input_rel}
+DESIGN DOC: ${input_abs}
+OUTPUT PLAN: ${output_abs}
 
 INSTRUCTIONS:
 1. cd to the working directory first. Confirm with \`pwd\` and \`git branch --show-current\`.
-2. Read CLAUDE.md at the repo root.
-3. Read docs/external-agent-protocol.md in full.
-4. Read the feedback file at ${input_rel}. Address every finding AND complete any remaining plan tasks. Treat the feedback as additive to, not a replacement for, the plan: a checkpoint-round dispatch that left unfinished plan tasks must still complete them in this run unless the feedback explicitly defers them. The original plan is the contract; do not repeat work already committed, but do continue work that was left undone.
-5. Make the fixes and remaining implementation. Follow the protocol exactly.
-6. Do NOT run \`git push\`. Do NOT run \`gh pr create\`.
-7. Update the existing status report at the path the previous round used.
-8. Exit only when both the feedback findings and the remaining plan tasks are complete, or when you hit the next checkpoint defined in the plan.
+2. Read every .md file in ${lessons_dir} in full. Do not skim, do not summarize. These are the plan-quality lessons your plan must respect.
+3. Read AGENTS.md at the repo root for project conventions.
+4. Read the design doc at ${input_abs} in full.
+5. Use the \`superpowers-writing-plans\` skill to write the implementation plan to ${output_abs}, applying every lesson throughout. If a deliberate departure from a lesson is necessary, call it out in the plan body with a one-line reason.
+6. Do NOT execute the plan. Do NOT run \`git push\`. Do NOT run \`gh pr create\`.
+7. Commit the plan draft on this branch. Do not add a Co-Authored-By trailer or any reference to the authoring tool.
+8. Exit.
 
-FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption — STOP, write what you observed to the status report, and exit. Do not guess.
+FAILURE PROTOCOL: if the design doc is ambiguous, internally inconsistent, or missing information the plan needs: STOP, capture what is unclear in an "Open Questions for the Orchestrator" section of the plan, and exit. Do not invent requirements.
+KICKOFF
+)
+elif [[ "$mode" == "segment" ]]; then
+  slice_rel="docs/.context/${current_branch}/slice-seg-${segment_n}.md"
+  "$WF_LOG" activity "$ctx_dir" dispatch-kimi "seg-${segment_n}" dispatch.start \
+    "dispatching segment ${segment_n} of ${input_rel}"
+  kickoff=$(cat <<KICKOFF
+You are an external implementation agent for the lbkmk project.
+
+WORKING DIRECTORY: ${worktree_abs}
+SEGMENT PLAN SLICE: ${slice_rel}
+ORIGINAL PLAN: ${input_rel}
+
+INSTRUCTIONS:
+1. cd to the working directory first. Confirm with \`pwd\` and \`git branch --show-current\`.
+2. Read AGENTS.md at the repo root.
+3. Read docs/external-agent-protocol.md in full.
+4. Read the segment plan slice at ${slice_rel}.
+5. Execute ONLY the tasks in this slice. Do NOT advance to later segments.
+6. Do NOT run \`git push\`. Do NOT run \`gh pr create\`.
+7. When the slice's commits land, write the per-segment status report to:
+     docs/.context/${current_branch}/checkpoint-seg-${segment_n}.md
+   and STOP. Do not begin any later segment.
+8. Exit.
+
+FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption: STOP, write what you observed to the checkpoint file, and exit. Do not guess.
+KICKOFF
+)
+else
+  # review-segment mode: reuse slice + dispatch feedback scoped to the segment.
+  # "complete any remaining plan tasks" language is intentionally absent here:
+  # in the sliced model there are no tasks beyond the current segment's scope.
+  slice_rel="docs/.context/${current_branch}/slice-seg-${segment_n}.md"
+  feedback_rel="${input_abs#${worktree_abs}/}"
+  "$WF_LOG" activity "$ctx_dir" dispatch-kimi "seg-${segment_n}" review.feedback \
+    "dispatching review feedback for segment ${segment_n}"
+  kickoff=$(cat <<KICKOFF
+You are an external implementation agent for the lbkmk project, addressing review findings for segment ${segment_n}.
+
+WORKING DIRECTORY: ${worktree_abs}
+FEEDBACK: ${feedback_rel}
+SEGMENT PLAN SLICE: ${slice_rel}
+
+INSTRUCTIONS:
+1. cd to the working directory first. Confirm with \`pwd\` and \`git branch --show-current\`.
+2. Read AGENTS.md at the repo root.
+3. Read docs/external-agent-protocol.md in full.
+4. Read the feedback file at ${feedback_rel}. Address every finding WITHIN this segment only.
+5. Read the segment plan slice at ${slice_rel} for reference.
+6. Do NOT advance to later segments. The scope is this segment only.
+7. Do NOT run \`git push\`. Do NOT run \`gh pr create\`.
+8. Update the per-segment status report at:
+     docs/.context/${current_branch}/checkpoint-seg-${segment_n}.md
+   when done.
+9. Exit.
+
+FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption: STOP, write what you observed to the checkpoint file, and exit. Do not guess.
 KICKOFF
 )
 fi
 
-echo "Dispatching Kimi: mode=${mode}, worktree=${worktree_abs}, input=${input_rel}" >&2
+if [[ "$mode" == "plan" ]]; then
+  echo "Dispatching Kimi: mode=plan, worktree=${worktree_abs}, design-doc=${input_abs}, output=${output_abs}" >&2
+elif [[ "$mode" == "segment" || "$mode" == "review-segment" ]]; then
+  echo "Dispatching Kimi: mode=${mode}, segment=${segment_n}, worktree=${worktree_abs}, input=${input_rel}" >&2
+else
+  echo "Dispatching Kimi: mode=${mode}, worktree=${worktree_abs}, input=${input_rel}" >&2
+fi
 echo "Log: ${log_file}" >&2
 
 # Run kimi-ecc, tee output to the log. Capture exit code without aborting on non-zero.
@@ -126,6 +473,12 @@ set +e
 kimi-ecc -w "$worktree_abs" --print --yolo -p "$kickoff" 2>&1 | tee "$log_file"
 kimi_exit=${pipestatus[1]}
 set -e
+
+# Post-run log for segment and review-segment modes.
+if [[ "$mode" == "segment" || "$mode" == "review-segment" ]]; then
+  "$WF_LOG" activity "$ctx_dir" dispatch-kimi "seg-${segment_n}" kimi.exit \
+    "exit=${kimi_exit}"
+fi
 
 # Post-run checks.
 final_sha=$(git -C "$worktree_abs" rev-parse HEAD)
