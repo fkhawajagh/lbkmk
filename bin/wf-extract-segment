@@ -1,0 +1,174 @@
+#!/usr/bin/env zsh
+# bin/wf-extract-segment: extract a numbered segment from a segmented plan file.
+#
+# A segmented plan has:
+#   - a shared-context block: everything before the first "## Segment N" heading
+#   - one or more segment sections starting at lines matching ^## Segment ([0-9]+)\b
+#
+# Usage:
+#   bin/wf-extract-segment <plan_path> <N>         # print shared-context + Segment N to stdout
+#   bin/wf-extract-segment <plan_path> --validate  # validate structure only; exit 0 or non-zero
+#
+# Exit codes:
+#   0   success
+#   64  usage error (wrong args, non-file plan)
+#   65  structural error (gap/dup/out-of-order segments, or N out of range)
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  bin/wf-extract-segment <plan_path> <N>
+  bin/wf-extract-segment <plan_path> --validate
+
+  <N>         Segment number to extract (positive integer).
+  --validate  Validate segment structure only; print nothing on success.
+
+Exit codes:
+  0   success
+  64  usage error (wrong args, non-file plan path)
+  65  structural error (bad segment numbering, or N out of range)
+EOF
+  exit 64
+}
+
+# Validate argument count.
+(( $# == 2 )) || usage
+
+plan_path="$1"
+second_arg="$2"
+
+# Validate plan file exists.
+if [[ ! -f "$plan_path" ]]; then
+  echo "Error: plan path does not exist or is not a file: $plan_path" >&2
+  exit 64
+fi
+
+# Resolve to absolute path (zsh :A modifier, matches dispatch-kimi convention).
+plan_abs="${plan_path:A}"
+
+# Collect all segment numbers from the plan file in order.
+# Boundary regex: ^## Segment ([0-9]+)\b
+# We use zsh's regex match to extract the integer.
+typeset -a seg_numbers
+while IFS= read -r line; do
+  if [[ "$line" =~ '^## Segment ([0-9]+)([^0-9]|$)' ]]; then
+    seg_numbers+=("${match[1]}")
+  fi
+done < "$plan_abs"
+
+# validate_structure: segments must be 1, 2, ..., K (contiguous, no gaps, no dupes, starts at 1).
+validate_structure() {
+  local k=${#seg_numbers[@]}
+
+  if (( k == 0 )); then
+    echo "Error: no segment headings found in plan (expected at least one '## Segment N' heading)" >&2
+    return 65
+  fi
+
+  # Check for duplicates first (scan for repeated values).
+  local i j
+  for (( i = 1; i <= k; i++ )); do
+    for (( j = i + 1; j <= k; j++ )); do
+      if (( seg_numbers[$i] == seg_numbers[$j] )); then
+        echo "Error: duplicate segment number ${seg_numbers[$i]} found in plan" >&2
+        return 65
+      fi
+    done
+  done
+
+  # Check that first segment is 1.
+  if (( seg_numbers[1] != 1 )); then
+    echo "Error: first segment is ${seg_numbers[1]}, expected 1 (segments must start at 1)" >&2
+    return 65
+  fi
+
+  # Check contiguity: each number must be exactly previous + 1.
+  for (( i = 2; i <= k; i++ )); do
+    local prev=${seg_numbers[$((i - 1))]}
+    local curr=${seg_numbers[$i]}
+    if (( curr != prev + 1 )); then
+      if (( curr < prev + 1 )); then
+        echo "Error: segment $curr appears after $prev (out of order)" >&2
+      else
+        echo "Error: segment $((prev + 1)) is missing (gap between $prev and $curr)" >&2
+      fi
+      return 65
+    fi
+  done
+
+  return 0
+}
+
+# --validate mode: validate and exit.
+if [[ "$second_arg" == "--validate" ]]; then
+  validate_structure
+  exit 0
+fi
+
+# Extraction mode: second arg must be a positive integer.
+N="$second_arg"
+if [[ ! "$N" =~ '^[0-9]+$' ]] || (( N <= 0 )); then
+  echo "Error: segment number must be a positive integer, got: $N" >&2
+  exit 65
+fi
+
+# Validate structure before extracting (bad plan = no dispatch).
+validate_structure || exit 65
+
+# Check N is in range 1..K.
+K=${#seg_numbers[@]}
+if (( N < 1 || N > K )); then
+  echo "Error: segment $N is out of range (plan has segments 1..$K)" >&2
+  exit 65
+fi
+
+# Extract: shared-context block + Segment N body.
+# shared-context: everything before the first ^## Segment [0-9]+\b line.
+# Segment N body: from "^## Segment N\b" (inclusive) to next "^## Segment [0-9]+\b" or EOF.
+#
+# This is a pure stdout operation; no files are written.
+# Deterministic: same (plan, N) → byte-identical output every time.
+# Uses standard POSIX awk (no named capture groups; uses sub() to extract integer).
+awk -v target="$N" '
+function is_seg_boundary(line,    num, rest) {
+  # Returns segment number if line matches ^## Segment ([0-9]+)\b, else 0.
+  if (line !~ /^## Segment [0-9]/) return 0
+  rest = line
+  sub(/^## Segment /, "", rest)
+  # Extract leading integer.
+  if (rest !~ /^[0-9]/) return 0
+  num = 0
+  while (length(rest) > 0 && substr(rest, 1, 1) ~ /[0-9]/) {
+    num = num * 10 + substr(rest, 1, 1) + 0
+    rest = substr(rest, 2)
+  }
+  # Must be followed by non-digit or end-of-string (the \b equivalent).
+  if (length(rest) > 0 && substr(rest, 1, 1) ~ /[0-9]/) return 0
+  return num
+}
+BEGIN {
+  in_context = 1
+  in_target  = 0
+}
+{
+  seg_num = is_seg_boundary($0)
+  if (seg_num > 0) {
+    in_context = 0
+    if (seg_num == target) {
+      in_target = 1
+      print
+      next
+    } else {
+      if (in_target) {
+        exit 0
+      }
+      in_target = 0
+      next
+    }
+  }
+  if (in_context) { print; next }
+  if (in_target)  { print; next }
+}
+' "$plan_abs"

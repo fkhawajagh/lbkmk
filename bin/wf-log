@@ -1,0 +1,149 @@
+#!/usr/bin/env zsh
+# bin/wf-log: workflow artifact and log writer.
+#
+# Single helper that owns all artifact + log writes for segment-sliced dispatch.
+# The activity.log line format and sha-pinned verdict/approval formats are
+# enforced here and nowhere else.
+#
+# Usage:
+#   bin/wf-log activity <ctx_dir> <source> <segment> <event> <detail>
+#   bin/wf-log verdict  <ctx_dir> <N> <PASS|FINDINGS> <sha>
+#   bin/wf-log approval <ctx_dir> <N> <sha>
+#
+# Exit codes:
+#   0   success
+#   64  usage error (wrong args, invalid sha, invalid verdict token)
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  bin/wf-log activity <ctx_dir> <source> <segment> <event> <detail>
+  bin/wf-log verdict  <ctx_dir> <N> <PASS|FINDINGS> <sha>
+  bin/wf-log approval <ctx_dir> <N> <sha>
+
+Subcommands:
+  activity  Append one timestamped line to <ctx_dir>/logs/activity.log.
+            Creates <ctx_dir>/logs/ if it does not exist.
+  verdict   Write (truncate) <ctx_dir>/review-seg-N.verdict with a single
+            sha-pinned line: "PASS <sha>" or "FINDINGS <sha>".
+  approval  Write (truncate) <ctx_dir>/approval-seg-N with a single
+            sha-pinned line: "APPROVED <sha>".
+
+Fields:
+  <ctx_dir>  Resolved path to docs/.context/<branch>. wf-log does not
+             compute the branch; the caller passes the resolved dir.
+  <sha>      Must be exactly 40 hex characters.
+  <verdict>  Must be exactly PASS or FINDINGS (uppercase).
+
+Exit codes:
+  0   success
+  64  usage error (wrong args, invalid sha, invalid verdict token)
+EOF
+  exit 64
+}
+
+# Require at least one argument (the subcommand).
+(( $# >= 1 )) || usage
+
+subcommand="${1:-}"
+shift
+
+# ---------------------------------------------------------------------------
+# validate_sha: ensure the argument is exactly 40 hex characters.
+# ---------------------------------------------------------------------------
+validate_sha() {
+  local sha="$1"
+  if [[ ! "$sha" =~ '^[0-9a-fA-F]{40}$' ]]; then
+    echo "Error: sha must be exactly 40 hex characters, got: $sha" >&2
+    exit 64
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# strip_newlines: replace any embedded newline (or \r) in a string with a space.
+# Used on <detail> so one event is always one line in activity.log.
+# ---------------------------------------------------------------------------
+strip_newlines() {
+  local input="$1"
+  # Replace carriage return and newline characters with a space.
+  printf '%s' "$input" | tr '\n\r' '  '
+}
+
+# ---------------------------------------------------------------------------
+# Subcommand: activity
+# ---------------------------------------------------------------------------
+if [[ "$subcommand" == "activity" ]]; then
+  (( $# == 5 )) || usage
+
+  ctx_dir="$1"
+  source="$2"
+  segment="$3"
+  event="$4"
+  raw_detail="$5"
+
+  # Strip embedded newlines from detail so one event is always one line.
+  detail=$(strip_newlines "$raw_detail")
+
+  # Create logs/ subdirectory if it does not exist.
+  mkdir -p "${ctx_dir}/logs"
+
+  # Compute timestamp inside wf-log (single source of format truth).
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # Append one line: <ts> <source> <segment> <event> <detail>
+  printf '%s %s %s %s %s\n' "$ts" "$source" "$segment" "$event" "$detail" \
+    >> "${ctx_dir}/logs/activity.log"
+
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Subcommand: verdict
+# ---------------------------------------------------------------------------
+if [[ "$subcommand" == "verdict" ]]; then
+  (( $# == 4 )) || usage
+
+  ctx_dir="$1"
+  n="$2"
+  verdict_token="$3"
+  sha="$4"
+
+  # Validate verdict token: must be exactly PASS or FINDINGS.
+  if [[ "$verdict_token" != "PASS" && "$verdict_token" != "FINDINGS" ]]; then
+    echo "Error: verdict token must be PASS or FINDINGS (uppercase), got: $verdict_token" >&2
+    exit 64
+  fi
+
+  # Validate sha.
+  validate_sha "$sha"
+
+  # Write (truncate) the verdict file: single line, trailing newline.
+  printf '%s %s\n' "$verdict_token" "$sha" > "${ctx_dir}/review-seg-${n}.verdict"
+
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Subcommand: approval
+# ---------------------------------------------------------------------------
+if [[ "$subcommand" == "approval" ]]; then
+  (( $# == 3 )) || usage
+
+  ctx_dir="$1"
+  n="$2"
+  sha="$3"
+
+  # Validate sha.
+  validate_sha "$sha"
+
+  # Write (truncate) the approval file: single line, trailing newline.
+  printf 'APPROVED %s\n' "$sha" > "${ctx_dir}/approval-seg-${n}"
+
+  exit 0
+fi
+
+# Unknown subcommand.
+echo "Error: unknown subcommand: $subcommand" >&2
+usage
