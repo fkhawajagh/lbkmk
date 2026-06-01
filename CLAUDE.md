@@ -74,6 +74,10 @@ Check `docs/domain-model.md` §§7-8 before starting design or implementation on
 
 ## Worktree Configuration
 
+**Hard rule: never check out a feature branch in the primary working tree at `/Users/farouk/src/lbkmk`. Always create a git worktree under `.worktrees/<branch>` and do all work there.**
+
+Multiple Claude agents (main session, dispatched subagents, parallel external sessions) run against this repo concurrently. If any agent checks out a branch in the primary working tree, it stomps on the working tree state every other agent depends on. Worktrees give each agent an isolated working copy on its own branch.
+
 Use `.worktrees/` (project-local) for git worktrees during feature development:
 
 ```bash
@@ -81,6 +85,14 @@ git worktree add .worktrees/{feature-branch} -b {feature-branch}
 ```
 
 The `.worktrees/` directory is gitignored. Each worktree gets its own isolated working copy.
+
+**Rules that apply to every agent (main session and subagents):**
+
+- Create a worktree before starting any non-trivial change, including documentation-only edits on a branch — no exception for "small" changes.
+- `cd` into the worktree before doing any work, and confirm with `pwd` and `git branch --show-current`. The Bash tool persists the working directory across calls, so a single `cd` at the start keeps every subsequent command rooted in the worktree (`cd` within the repo's worktrees is permitted — see global "File Operations"). This mirrors the external-agent rule in `docs/external-agent-protocol.md` §2.2.
+- All Read / Write / Edit / Bash operations must use absolute paths rooted at the worktree, not at the primary repo root.
+- When dispatching subagents (Kimi via `bin/dispatch-kimi`, external Claude sessions, in-process Sonnet via the `Agent` tool), pass the worktree path so the subagent operates inside it.
+- The only operations permitted in the primary working tree are: reading files, inspecting git state, and creating new worktrees. No branch checkout, no commits, no edits.
 
 ## Tracking Deferred Work
 
