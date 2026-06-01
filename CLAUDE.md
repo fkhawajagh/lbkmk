@@ -53,11 +53,11 @@ The existing top-level anchor docs (`domain-model.md`, `solution-proposal.md`) k
 
 ## Handoff Documents
 
-Session-end handoff documents — short notes that let the next session pick up where the previous one left off — live in **`docs/handoff/`** and are checked into git on `main`. This is distinct from `docs/.context/{feature}/` (the multi-agent pipeline's transient process artifacts), which is gitignored and disappears with the worktree.
+Session-end handoff documents — short notes that let the next session pick up where the previous one left off — live in **`docs/.handoff/`** and are **gitignored**. A handoff is a bridge between sessions, not a committed artifact: write it to the primary checkout's `docs/.handoff/` so every session reads the same location regardless of which worktree it ran in, and the doc survives that worktree's deletion. Only `docs/.handoff/README.md` (the convention itself) is committed; the dated handoffs are not. This is distinct from `docs/.context/{feature}/` (the multi-agent pipeline's transient per-feature process artifacts), which is also gitignored.
 
-Before wrapping any session that produced a meaningful unit of work (a merged PR, a mid-flight branch left for the next session, a decision made in conversation that isn't captured in the plan, PR, or memory), write a handoff to `docs/handoff/YYYY-MM-DD-<branch-or-topic-slug>.md` and commit it to the relevant branch so it lands on `main` at merge time. See `docs/handoff/README.md` for the full convention — when to write, the document skeleton, and how it relates to plan docs, PR descriptions, CLAUDE.md, and the memory system.
+Before wrapping any session that produced a meaningful unit of work (a merged PR, a mid-flight branch left for the next session, a decision made in conversation that isn't captured in the plan, PR, or memory), write a handoff to `docs/.handoff/YYYY-MM-DD-<branch-or-topic-slug>.md`. Do not commit it. See `docs/.handoff/README.md` for the full convention — when to write, the document skeleton, and how it relates to plan docs, PR descriptions, CLAUDE.md, and the memory system.
 
-**Rule of thumb:** if losing the worktree would erase context the next session needs, it belongs in `docs/handoff/`, not `docs/.context/`.
+**Rule of thumb:** if losing the worktree would erase context the next session needs, it belongs in `docs/.handoff/`, not `docs/.context/`.
 
 ## Open Questions Policy
 
@@ -125,7 +125,7 @@ Sources to query, in order:
 
 1. **In-flight PRs** — `gh pr list --state open --json number,title,headRefName,updatedAt,statusCheckRollup`. Note CI status on each.
 2. **Open issues** — `gh issue list --state open --limit 30 --sort updated --json number,title,labels,updatedAt`. Group by label (`bug`, `enhancement`, `tech-debt`, etc.); flag stale ones (>30 days untouched).
-3. **Last session's bridge** — most recent file in `docs/handoff/*.md` by mtime; one-line summary of where the prior session left off.
+3. **Last session's bridge** — most recent file in `docs/.handoff/*.md` by mtime (gitignored, in the primary checkout); one-line summary of where the prior session left off.
 4. **Recent merges** — `git log main --oneline -10` for what landed lately.
 5. **Open questions blocking work** — `docs/domain-model.md` §§7-8; surface any items that block feature areas under active development.
 

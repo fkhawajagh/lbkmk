@@ -78,7 +78,7 @@ Commit messages must not include a `Co-Authored-By: Claude` (or any AI-attributi
 - `docs/.context/<feature>/logs/activity.log` and `docs/.context/<feature>/logs/*.log`
 - any other file the orchestrator may add to that directory between dispatches
 
-The same rule applies to any other gitignored path (e.g. `.env*` other than `.env.example`, `_build/`, `deps/`). If a status report needs to be visible on `main` after merge, it goes to a committed handoff doc at `docs/handoff/YYYY-MM-DD-<branch>.md` (see "Handoff Documents" in `CLAUDE.md`) — the implementer never reaches into `docs/handoff/`.
+The same rule applies to any other gitignored path — `docs/.handoff/` (session handoffs), `.env*` other than `.env.example`, `_build/`, `deps/`. Session handoffs and final-status reports are gitignored bridges, not committed artefacts: write them under `docs/.handoff/` or `docs/.context/<feature>/` and never `git add` them. If something must be visible on `main` after merge, it belongs in the PR description or a tracked doc the plan names — not a handoff.
 
 If a write to a gitignored path is needed (e.g. updating `final-status.md` mid-task), make the edit and do NOT stage or commit it. Reaching for `git add -f` to bypass `.gitignore` is a protocol violation regardless of the file's contents — stop and surface it in the status report.
 
@@ -389,7 +389,7 @@ The orchestrator runs the Opus review pipeline (build-validator + integration-re
 
 ## 12. Status Report Format
 
-Write the status report to the path the plan specifies (typically `docs/handoff/YYYY-MM-DD-<branch-slug>.md`). Use this skeleton:
+Write the status report to the path the plan specifies (typically `docs/.handoff/YYYY-MM-DD-<branch-slug>.md`, gitignored — do not commit it). Use this skeleton:
 
 ```markdown
 # Status Report: <plan title>
@@ -440,7 +440,7 @@ The status report is the orchestrator's primary input for deciding what to revie
 - `AGENTS.md` (repo root) — agent-side operative subset of `CLAUDE.md` for non-Claude external agents
 - `~/.claude/CLAUDE.md` (user global) — Core Principles, Code Style, Security, Trust Boundary, Model Routing Policy
 - `~/.dotfiles/rules/elixir/coding-style.md` — Elixir-specific style rules (if/when an Elixir codebase exists)
-- `docs/handoff/README.md` — handoff document convention and skeleton
+- `docs/.handoff/README.md` — handoff document convention and skeleton
 - `docs/shared-context-template.md` — per-feature context.md template
 
 ---

@@ -104,7 +104,7 @@ Every external event ingestion is keyed on `(channel, external_event_id)` and mu
 
 ### Handoff documents
 
-Session-end handoffs are committed to `docs/handoff/YYYY-MM-DD-<branch-or-topic-slug>.md` so they land on `main` at merge. This is distinct from the gitignored `docs/.context/<feature>/` process artefacts. See `docs/handoff/README.md`.
+Session-end handoffs are written to the gitignored `docs/.handoff/YYYY-MM-DD-<branch-or-topic-slug>.md` in the primary checkout (a bridge between sessions, not committed; only the directory's `README.md` is tracked). This is distinct from the gitignored `docs/.context/<feature>/` per-feature process artefacts. See `docs/.handoff/README.md`.
 
 ## External Agent Protocol
 

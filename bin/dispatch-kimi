@@ -373,7 +373,7 @@ INSTRUCTIONS:
 4. Read the plan at ${input_rel}.
 5. Execute the plan. Follow the protocol exactly.
 6. Do NOT run \`git push\`. Do NOT run \`gh pr create\`.
-7. When complete (or stopped at a checkpoint), write the status report to the path the plan specifies (typically docs/handoff/<date>-<branch>.md).
+7. When complete (or stopped at a checkpoint), write the status report to the path the plan specifies (typically docs/.handoff/<date>-<branch>.md, gitignored — do not commit it).
 8. Exit.
 
 FAILURE PROTOCOL: if anything is unclear, ambiguous, or compiles against a wrong assumption: STOP, write what you observed to the status report, and exit. Do not guess.
