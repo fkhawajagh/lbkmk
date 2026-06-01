@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" role="img" aria-label="Diwan — minimal wordmark">
+  <title>Diwan — minimal wordmark</title>
+
+  <!--
+    Concept 3: Minimal wordmark.
+    A clean serif "Diwan" with a small rhombus accent above the 'i'
+    — the rhombus is a single point of the khatam, recurring as a
+    quiet visual hook across the brand. Designed to stamp well on
+    dashboards, emails, footers without competing with surrounding UI.
+
+    Color: #1a3a5c (ink-navy). One color, scales to any size.
+  -->
+
+  <g fill="#1a3a5c">
+    <text
+      x="240"
+      y="105"
+      text-anchor="middle"
+      font-family="'Cormorant Garamond', 'EB Garamond', Georgia, serif"
+      font-size="96"
+      font-weight="500"
+      letter-spacing="6"
+    >Diwan</text>
+
+    <!--
+      Rhombus accent above the 'i' (replaces the dot).
+      Position is empirically tuned for Cormorant/Garamond at the
+      sizing above; may need a nudge if the user picks a different
+      serif. Center coordinates approximate (215, 38), 12px diameter.
+    -->
+    <polygon points="215,32 221,38 215,44 209,38" />
+  </g>
+</svg>

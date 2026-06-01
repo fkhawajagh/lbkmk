@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 280" role="img" aria-label="Diwan — Arabic and Latin wordmark">
+  <title>Diwan — Arabic and Latin wordmark</title>
+
+  <!--
+    Concept 1: Arabic calligraphic wordmark + Latin wordmark.
+    Color: deep ink-navy #1a3a5c. Background transparent.
+    The Arabic text "ديوان" should render in a calligraphic-style face
+    if the viewer has one of the fonts in the stack installed. The
+    most natural here is Aref Ruqaa or Reem Kufi (Google Fonts);
+    falling back to Amiri, then system Arabic.
+  -->
+
+  <g fill="#1a3a5c">
+    <text
+      x="300"
+      y="130"
+      text-anchor="middle"
+      direction="rtl"
+      font-family="'Aref Ruqaa', 'Reem Kufi', 'Amiri', 'Scheherazade New', serif"
+      font-size="120"
+      font-weight="700"
+    >ديوان</text>
+
+    <line x1="220" y1="170" x2="380" y2="170" stroke="#1a3a5c" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+
+    <text
+      x="300"
+      y="230"
+      text-anchor="middle"
+      font-family="'Cormorant Garamond', 'EB Garamond', Georgia, serif"
+      font-size="56"
+      font-weight="500"
+      letter-spacing="14"
+    >DIWAN</text>
+  </g>
+</svg>

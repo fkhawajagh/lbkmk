@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 460" role="img" aria-label="Diwan — khatam mark with wordmark">
+  <title>Diwan — khatam mark with wordmark</title>
+
+  <!--
+    Concept 2: Khatam (8-point star) mark + Latin wordmark.
+    The khatam is formed by two overlapping squares, one axis-aligned
+    and one rotated 45°. Both squares share the same center and the
+    same vertex-to-center radius. This is one of the most recognizable
+    forms in Islamic geometric design.
+
+    The mark can be used standalone (favicon, app icon). The wordmark
+    pairs it for letterhead / landing / docs.
+
+    Color: #1a3a5c (ink-navy). Stroke-only treatment so the mark reads
+    clearly at small sizes and works in monochrome.
+  -->
+
+  <g fill="none" stroke="#1a3a5c" stroke-width="6" stroke-linejoin="round">
+    <!-- Square 1: axis-aligned, vertices at top/right/bottom/left of a 160-radius circle -->
+    <polygon points="160,40 280,160 160,280 40,160" />
+    <!-- Square 2: 45°-rotated, vertices at four diagonal corners of the same 160-radius circle -->
+    <polygon points="244.85,75.15 244.85,244.85 75.15,244.85 75.15,75.15" />
+  </g>
+
+  <!-- Wordmark beneath the mark -->
+  <text
+    x="160"
+    y="395"
+    text-anchor="middle"
+    font-family="'Cormorant Garamond', 'EB Garamond', Georgia, serif"
+    font-size="56"
+    font-weight="500"
+    letter-spacing="14"
+    fill="#1a3a5c"
+  >DIWAN</text>
+
+  <!-- Tiny tagline option (commented out, drop in if wanted) -->
+  <!--
+  <text x="160" y="440" text-anchor="middle"
+        font-family="Georgia, serif" font-size="14"
+        letter-spacing="6" fill="#1a3a5c" opacity="0.6">
+    LITTLE BIG KIDS
+  </text>
+  -->
+</svg>
