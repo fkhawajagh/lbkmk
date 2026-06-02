@@ -1,0 +1,76 @@
+# Canonical machine-readable record of lbkmk's delivery phases.
+# Shape fixed by docs/project-status.schema.json. Hand-edited by the orchestrator
+# at the three triggers in CLAUDE.md "Project Status Tracking". Distinct from the
+# live "project status" query (see CLAUDE.md "Project Status").
+schema_version: "1.0"
+updated_on: "2026-06-02"
+
+phases:
+  - key: "0"
+    title: "Discovery"
+    stage: "Design"
+    status: "In Progress"
+    doc_slug: "solution-proposal"
+    depends_on: []
+    pr_numbers: []
+    started_on: "2026-05-22"   # approximate — first anchor-doc work
+    completed_on: null
+    open_questions:
+      - slug: "term-approval"
+        body: "Owner-facing label for signing off a sale — keep 'Approval' or use 'confirm'/'post'/'release'? Blocks locking the UI vocabulary. See domain-model.md §7."
+      - slug: "term-drift"
+        body: "Owner's term for a mismatch between approved invoices and a payout total (currently 'Drift'). See domain-model.md §7."
+      - slug: "term-channel-sku"
+        body: "Owner-facing label for the channel product mapping; 'Channel SKU' may be too jargon-heavy. See domain-model.md §7."
+
+  - key: "1"
+    title: "End-to-end proof (Squarespace + Stripe + Xero)"
+    stage: "Design"
+    status: "Pending"
+    doc_slug: "solution-proposal"
+    depends_on: ["0"]
+    pr_numbers: []
+    started_on: null
+    completed_on: null
+    open_questions:
+      - slug: "xero-bank-rules"
+        body: "Existing Xero bank-rule config in LBK's tenant: if a rule auto-categorises feed deposits as revenue while lbkmk also posts revenue invoices, the books double. The posting strategy depends on the answer. Blocking — issue #51."
+      - slug: "xero-plan-tier"
+        body: "LBK's Xero plan tier: tracked inventory needs Standard+, multi-currency needs Premium. A lower tier breaks the Item-based catalog. Blocking — issue #55."
+      - slug: "chart-of-accounts"
+        body: "Which Account Code each Inventory Item kind posts to (merch vs tickets; Stripe vs Square fees). Blocking — issue #56."
+      - slug: "event-ticket-caps"
+        body: "Per-event Inventory Items vs a shared reused Item — affects per-event stock caps and historical reporting. Confirm before locking the model. Blocking — issue #53."
+
+  - key: "2"
+    title: "Add Square + TicketTailor"
+    stage: "Design"
+    status: "Pending"
+    doc_slug: "solution-proposal"
+    depends_on: ["1"]
+    pr_numbers: []
+    started_on: null
+    completed_on: null
+    open_questions: []
+
+  - key: "3"
+    title: "Reconciliation sweep + payouts"
+    stage: "Design"
+    status: "Pending"
+    doc_slug: "solution-proposal"
+    depends_on: ["2"]
+    pr_numbers: []
+    started_on: null
+    completed_on: null
+    open_questions: []
+
+  - key: "4"
+    title: "Hardening, audit UI, invoice void"
+    stage: "Design"
+    status: "Pending"
+    doc_slug: "solution-proposal"
+    depends_on: ["3"]
+    pr_numbers: []
+    started_on: null
+    completed_on: null
+    open_questions: []
