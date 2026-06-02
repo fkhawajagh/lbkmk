@@ -33,17 +33,12 @@ python3 scripts/build-combined.py
 mkdir -p docs/dist
 
 echo ""
-echo "==> Running Quarto"
+echo "==> Running Quarto (project mode — picks up theme + include-in-header from _quarto.yml)"
+# Per-file render with `--to html` does NOT apply format-level config
+# (theme, include-in-header) from _quarto.yml on quarto >=1.9; project-mode
+# render does. The render: list in _quarto.yml drives which files are built.
 cd docs/_render
-DOCS=("domain-model.md" "solution-proposal.md" "combined.md")
-for doc in "${DOCS[@]}"; do
-  if [[ ! -f "${doc}" ]]; then
-    echo "Skipping ${doc} (file not found)" >&2
-    continue
-  fi
-  echo "  rendering ${doc}..."
-  quarto render "${doc}" --to html 2>&1 | tail -1
-done
+quarto render 2>&1 | tail -5
 
 cd ../..
 echo ""

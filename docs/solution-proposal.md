@@ -106,7 +106,7 @@ flowchart LR
 | Context | Responsibility | Key modules |
 |---|---|---|
 | **`Ingest`** | Accept normalized events from Make, dedupe, persist, route to lifecycle. | `Ingest.upsert_event/1`, `Ingest.resolve_lines/1` |
-| **`Reconciliation`** | Match payment-to-sale events, apply state transitions, run the matching ladder. | `Reconciliation.try_correlate/1`, `Reconciliation.approve/2`, `Reconciliation.reject/2` |
+| **`Reconciliation`** | Match payment-to-sale events (catalog kind 1, §6), check line totals (kind 2), apply state transitions, run the matching ladder. Hosts the daily payout sweep job (kind 4). | `Reconciliation.try_correlate/1`, `Reconciliation.approve/2`, `Reconciliation.reject/2`, `Reconciliation.sweep_payouts/0` |
 | **`Inventory`** | Mirror Xero tracked items, expose stock snapshots. | `Inventory.snapshot_from_xero/1`, `Inventory.item_by_xero_code/1` |
 | **`Audit`** | Append-only logging, forensic queries. | `Audit.record/3`, `Audit.timeline_for/1` |
 | **`Channels`** | Channel SKU mapping admin: register unmapped SKUs, link to items, retire. | `Channels.upsert_sku/1`, `Channels.map_to_item/2` |
@@ -225,7 +225,7 @@ sequenceDiagram
     UI-->>Owner: badge flips to "posted ✓"
 ```
 
-### Flow 4 — Daily reconciliation sweep
+### Flow 4 — Daily reconciliation sweep (catalog kind 4 — see §6)
 
 ```mermaid
 sequenceDiagram
@@ -334,20 +334,68 @@ flowchart TD
     J --> K
 ```
 
-## 6. Reconciliation model — two sides
+## 6. Reconciliation Catalog
 
-Reconciliation in this system happens at **two distinct granularities**, and conflating them is the trap to avoid.
+Reconciliation is the load-bearing feature of this system, and the docs that came before this section have used the word loosely. To be precise: **LBK's "transaction reconciliation" is a family of four distinct comparisons**, each with its own pair of sides, its own source systems, its own trigger, and its own definition of success. This section lists them. §7 ("Reconciliation cadence") describes *when* each one runs.
+
+### The four kinds
+
+| # | Kind | Left side | Right side | Source of left | Source of right | Trigger | Actor | Success criterion |
+|---|---|---|---|---|---|---|---|---|
+| 1 | **Sale ↔ Payment correlation** | A sale-side event | The payment-side event that paid for it | Squarespace, TicketTailor | Stripe (Square is unified — self-correlates) | On ingest of either side | System | Both sides linked; one Sale Event covers both rows |
+| 2 | **Line totals ↔ event gross** (internal sanity check) | Sum of resolved Line Item amounts | The event's gross amount | Channel payload (lines) | Same channel payload (header) | On ingest | System | Difference within $0.50 tolerance |
+| 3 | **Sale Event ↔ Xero Invoice** | Approved Sale Event in Phoenix | Posted Invoice in Xero | Phoenix DB | Xero API (idempotent on `Reference`) | Owner clicks Approve | Owner (initiates), System (writes) | Xero confirms `posted`; Invoice id stored on Sale Event |
+| 4 | **Approved invoices ↔ Payout** | Sum of net amounts of approved Invoices for a (processor, date-window) | Payout amount landed in Xero via bank feed | Phoenix + Xero | Stripe / Square payout via Xero bank feed | Daily sweep | System flags, Owner reviews drift | Sums match within tolerance; else `drift_flagged` |
+
+### Where each kind physically happens
+
+- **Kind 1 (sale ↔ payment correlation)** runs in the Phoenix `Reconciliation` context, triggered by webhook ingest from Make. The matching ladder in §5.2 — `id_match`, then `metadata_match`, then `amount_time_window` — is the algorithm for this kind. Square does not need this step because its sale and payment arrive in one payload.
+- **Kind 2 (line totals ↔ event gross)** also runs in the `Reconciliation` context, on ingest. Rule 3 in `domain-model.md` §6 sets the $0.50 tolerance. A failure routes the Sale Event to `needs_resolution` with reason `amount mismatch`.
+- **Kind 3 (Sale Event ↔ Xero Invoice)** is the outbound side. The Phoenix `XeroWrites` context dispatches to the Make Xero-write scenario on owner approval; the result handler closes the loop. Idempotency on the `Reference` field carrying the Sale Event id prevents duplicate Invoices on retry.
+- **Kind 4 (approved invoices ↔ Payout)** runs in a scheduled job inside the `Reconciliation` context (`Reconciliation.sweep_payouts/0`), triggered by the daily Make sweep — see Flow 4 in §4. Compares the local sum of approved Invoice nets against the payout amount that the bank feed brought into Xero.
+
+### How the catalog overlays the architecture
+
+```mermaid
+flowchart LR
+    Make_Ingress[Make: source-ingress scenarios] --> K1["Kind 1<br/>sale ↔ payment"]
+    Make_Ingress --> K2["Kind 2<br/>lines ↔ gross"]
+    Owner((Owner clicks approve)) --> K3["Kind 3<br/>sale → Xero invoice"]
+    K3 --> Make_Xero[Make: Xero-write scenario]
+    Make_Sweep[Make: reconciliation sweep] --> K4["Kind 4<br/>invoices ↔ payout"]
+    K1 -. "feeds approval readiness" .-> K3
+    K2 -. "feeds approval readiness" .-> K3
+    K3 -. "produces the invoices that<br/>kind 4 sums" .-> K4
+```
+
+Reading the diagram: kinds 1 and 2 must succeed at ingest before a Sale Event can be approved. Kind 3 runs at the moment of approval. Kind 4 closes the loop end-to-end, days later, against the bank deposit.
+
+### What "drift" looks like, per kind
+
+| Kind | Drift / failure surface | Resolution |
+|---|---|---|
+| 1 | No matching payment side after 30 min → `needs_resolution`, reason `no payment side` | Owner investigates; usually a missing webhook or a refund |
+| 2 | Line sums don't equal gross beyond $0.50 → `needs_resolution`, reason `amount mismatch` | Owner inspects line items; usually a fee anomaly or split charge |
+| 3 | Xero rejects the invoice post → Sale Event state `failed` | Owner fixes underlying issue (remap SKU, update item), clicks Retry |
+| 4 | Payout total ≠ sum of approved invoices → Payout state `drift_flagged` | Owner reviews; usually a missing ingest, a duplicate, or a fee/timing edge case |
+
+## 7. Reconciliation cadence — continuous vs daily
+
+Where §6 enumerates *what* gets reconciled, this section describes *when*. The four catalog kinds run on two cadences:
+
+- **Continuous** — every event, in real time: kinds 1 and 2 (at ingest) and kind 3 (at approval).
+- **Daily** — once per day, at the end-of-period sweep: kind 4 (payout closure).
 
 ```mermaid
 flowchart TB
-    subgraph Per_Sale["Per-sale reconciliation (continuous)"]
+    subgraph Continuous["Continuous reconciliation (kinds 1, 2, 3)"]
         direction LR
-        E1[Sale event arrives] --> E2[Lines resolved · correlation found]
+        E1[Sale event arrives] --> E2["Kind 1: payment-side correlated<br/>Kind 2: lines sum to gross"]
         E2 --> E3[Owner approves]
-        E3 --> E4[Itemized Invoice in Xero]
+        E3 --> E4["Kind 3: Itemized Invoice in Xero"]
     end
 
-    subgraph Per_Payout["Per-payout reconciliation (daily)"]
+    subgraph Daily["Daily reconciliation (kind 4)"]
         direction LR
         P1["Payout lands in Xero<br/>via existing bank feed"] --> P2[Sweep pulls payout into Phoenix]
         P2 --> P3{"Sum of approved invoices<br/>for date range and processor<br/>== payout gross ± tolerance?"}
@@ -355,16 +403,16 @@ flowchart TB
         P3 -->|No| P5[Drift flagged for review]
     end
 
-    Per_Sale -. invoices feed payout reconciliation .-> Per_Payout
+    Continuous -. "invoices produced by kind 3<br/>feed kind 4" .-> Daily
 ```
 
-**Per-sale reconciliation** is what the owner does most days: confirm an event is correctly captured, approve, an itemized invoice posts. This is event-level — one approval = one invoice.
+**Continuous reconciliation (kinds 1–3)** is what the owner sees most days: events arrive, kinds 1 and 2 fire automatically on ingest, the owner approves clean events, kind 3 posts the itemized invoice to Xero. One approval = one invoice.
 
-**Per-payout reconciliation** is the closure step: every few days, when Stripe or Square deposits a lump sum into the bank account, the bank feed brings it into Xero. We then check that the sum of approved invoices for the right window matches that deposit. Drift means either a missing invoice (we never ingested the event), a duplicated invoice, or a fee/timing edge case worth investigating.
+**Daily reconciliation (kind 4)** is the closure step. Every few days, Stripe or Square deposits a lump sum into the bank account, the existing Xero bank feed brings it in as a bank transaction, and the daily sweep (Flow 4 in §4) compares the deposit against the sum of approved invoices for the matching window. Drift means a missing invoice (we never ingested the event), a duplicated invoice, or a fee/timing edge case worth investigating.
 
-**Why both matter:** per-sale gets you item-level revenue granularity. Per-payout closes the loop end-to-end against the bank account.
+**Why both cadences matter:** continuous reconciliation gives item-level revenue granularity (without it, Xero just sees lump-sum payouts). Daily reconciliation closes the loop end-to-end against the bank account (without it, the per-item picture could quietly diverge from the actual money).
 
-## 7. Audit trail
+## 8. Audit trail
 
 Every meaningful action emits an audit entry. The audit log is append-only and forensically complete: it answers "show me the full history of TicketTailor order TT-12345" in one query.
 
@@ -416,7 +464,7 @@ A single query against `audit_log WHERE subject_id = 'TT-12345'` reproduces the 
 - Every state transition writes its audit row in the same database transaction as the state change itself. There is no window where a state has changed without a corresponding audit entry, or vice versa.
 - The `xero_writes` table captures the full request and response payloads to/from Xero, in JSON. Useful for both forensic review and reproducing a failure offline.
 
-## 8. Data model
+## 9. Data model
 
 The full entity-relationship diagram appears in `docs/domain-model.md` §4.1. Here we focus on the **implementation specifics** — concrete table names, column types, indexes.
 
@@ -556,7 +604,7 @@ erDiagram
 - `xero_writes`: `unique(sale_event_id)` to enforce "at most one invoice per sale event"; `unique(xero_invoice_id)`.
 - `audit_log`: index on `(subject_type, subject_id, occurred_at)` for forensic queries.
 
-## 9. API contract (Make ↔ Phoenix)
+## 10. API contract (Make ↔ Phoenix)
 
 All endpoints under `/api/v1`. JSON request/response. Bearer token auth (`Authorization: Bearer <env-var>`).
 
@@ -626,7 +674,7 @@ Phoenix calls a single Make webhook URL. Make routes by `action`:
 | `reprocess_event` | Owner clicks "retry" on a failed event | sale_event_id |
 | `void_invoice` | Owner voids a posted invoice | xero_invoice_id + reason |
 
-## 10. Operational concerns
+## 11. Operational concerns
 
 ### Idempotency (five layers — **[v0.2] added Xero header**)
 
@@ -704,7 +752,7 @@ Each row is a known failure mode the canonical-shape designs must defend against
 - Structured logs on every Make→Phoenix call: source, event_id, outcome, latency.
 - Error tracking (Sentry / AppSignal / Honeybadger) added at deploy time.
 
-## 11. What's explicitly **not** in scope (v1)
+## 12. What's explicitly **not** in scope (v1)
 
 | Not in scope | Reason | When to revisit | **[v0.2]** Reference for v2 |
 |---|---|---|---|
@@ -717,7 +765,7 @@ Each row is a known failure mode the canonical-shape designs must defend against
 | Sync **from** Xero back to channels | Product catalog stays managed in channels. | If channels need centralized catalog management. | — |
 | Direct Phoenix → external APIs | Make owns all external API access. | Deliberate later decision, not drift. | Xero is the candidate exception — `xero.md` notes that for a single direct integration with no transformation, the Make-as-transformer benefit is thin. Revisit if Make's Xero connector ever becomes a constraint. |
 
-## 12. Open questions (must close before implementation starts)
+## 13. Open questions (must close before implementation starts)
 
 **[v0.2] Status update:** Q1 resolved by integration research. Q2 elevated to top — it gates the posting strategy and the answer is almost certainly "yes, feeds are wired" but the bank-rule configuration in LBK's Xero tenant is the load-bearing detail. Q5 has a planning estimate now. Six new integration-research questions surfaced 63 issues on GitHub (#2–#64, all labeled `question`) — those are the empirical follow-ups, not blocking design.
 
@@ -736,11 +784,11 @@ Each row is a known failure mode the canonical-shape designs must defend against
 - **Issue #29** (and #3): TicketTailor's `payment_method.external_id` shape — turns TT↔Stripe correlation from heuristic to deterministic in one observation.
 - **Issues #28, #36, #50, #59**: capture one real LBK Squarespace order envelope + Stripe Dashboard view of one Squarespace-originated charge + Xero bank-feed inventory + Square Sandbox order — resolves ~10 questions in 1–2 hours.
 
-## 13. Proposed delivery phases (high level)
+## 14. Proposed delivery phases (high level)
 
 Detailed phasing belongs in the implementation plan (next document). At a glance:
 
-1. **Phase 0 — Discovery** (close all questions in §12).
+1. **Phase 0 — Discovery** (close all questions in §13).
 2. **Phase 1 — End-to-end proof with Squarespace + Stripe + Xero.**
 3. **Phase 2 — Add Square and TicketTailor; correlation across channels.**
 4. **Phase 3 — Reconciliation sweep + payouts view.**

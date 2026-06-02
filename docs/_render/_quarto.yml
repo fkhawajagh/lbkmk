@@ -1,6 +1,10 @@
 project:
   type: default
   output-dir: ../dist
+  render:
+    - domain-model.md
+    - solution-proposal.md
+    - combined.md
 
 format:
   html:
