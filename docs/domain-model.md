@@ -1,15 +1,17 @@
 ---
 title: Little Big Kids — Domain Model
 audience: Owner review (technical)
-status: Draft v0.2
+status: Draft v0.3
 date: 2026-05-22
 ---
 
-> **Document Version: 0.2** | 2026-05-22
+> **Document Version: 0.3** | 2026-05-22 (updated 2026-06-02)
 >
 > Draft for owner review. The vocabulary, entities, and business rules below are the contract this system is built around. Sign-off here precedes any work on the solution proposal.
 >
 > **Changed in v0.2:** corrections driven by the integration research under `docs/integrations/*.md`. The model's shape and vocabulary are unchanged. Notable corrections: §4.2 Line Item invariant (the channel that needs line-item enrichment is **Squarespace**, not TicketTailor), §4.2 Sale Event fee note (Stripe fees arrive via a separate object), §8 open-scope questions updated with current status. Specific changes are tagged `[v0.2]`.
+>
+> **Changed in v0.3:** §8 open-scope questions updated with the owner's answers to the discovery questionnaire (2026-06-02; see `docs/discovery/owner-questions.md` and issues #19 through #62). Two of the four blocking questions resolved (#56 chart of accounts, #53 ticket Items) and two reframed from discovery into design decisions (#55 Xero invoice cap, #51 clearing-account posting); two non-blocking questions also resolved (#52 Contact strategy, #27 Stripe merchant-of-record). Specific changes are tagged `[v0.3]`.
 
 ## 1. Purpose
 
@@ -311,25 +313,26 @@ These are terms where we want the owner to weigh in before locking the vocabular
 
 ## 8. Open scope questions (for owner review)
 
-**[v0.2] Status update:** integration research resolved one of the original four questions and surfaced four new ones the owner needs to weigh in on. Each item below tags its current status and (where applicable) cites the GitHub issue tracking the empirical follow-up. Issues #2–#64 are the full tier-2 research backlog.
+**[v0.3] Status update:** the owner answered the discovery questionnaire on 2026-06-02 (see [discovery/owner-questions.md](discovery/owner-questions.md) and issues #19 through #62). Of the four blocking questions, two are now resolved (#56, #53) and two are reframed into design decisions (#55, #51); the per-customer Contact (#52) and Stripe merchant-of-record (#27) questions are also resolved. Issues #2 through #64 remain the full tier-2 research backlog.
 
 ### Resolved
 
-- ~~**TicketTailor line items**~~ — **Resolved (affirmative).** `order.created` and `order.updated` webhooks ship full `line_items[]` + `issued_tickets[]`. No enrichment call needed. See `docs/integrations/tickettailor.md`.
+- ~~**TicketTailor line items**~~. **Resolved (affirmative).** `order.created` and `order.updated` webhooks ship full `line_items[]` + `issued_tickets[]`. No enrichment call needed. See `docs/integrations/tickettailor.md`.
+- ~~**Chart-of-accounts mapping**~~ *(issue #56)*. **Resolved [v0.3].** Merch sales post to `4000` Sale of Goods, event tickets to `4010` Sale of Tickets, Stripe and Square processing fees both to `6030` Bank Fees, shipping to `4250` Shipping Income. lbkmk persists this as a config table.
+- ~~**Event-specific ticket Items**~~ *(issue #53)*. **Resolved [v0.3].** One untracked Xero Item per show (for example `Tickets: ILYAS & DUCK Show`), with a new Item created per event as products launch. Not per-ticket-type-per-event, and not one generic reused Item. The untracked choice is consistent with the Xero plan tier (see below).
+- ~~**Per-customer vs umbrella Xero Contact**~~ *(issue #52)*. **Resolved [v0.3].** Umbrella strategy: group ecommerce and POS direct-to-consumer sales under one Contact per channel. Avoids PII sprawl and a GDPR deletion surface in Xero.
+- ~~**LBK Stripe merchant-of-record**~~ *(issue #27)*. **Resolved [v0.3].** Squarespace and TicketTailor charges land in LBK's own Stripe Dashboard, so Stripe webhook events flow normally. (The related Connect-applications check, issue #34, is pending the owner's read-only Stripe access.)
 
-### Still open — blocking (must close before implementation starts)
+### Still open: blocking (must close before implementation starts)
 
-- **Existing Xero state and bank rules** *(issue #51)*. Strong evidence that LBK has Stripe and Square already connected via Xero's official direct feeds. The load-bearing detail is the **bank-rule configuration** in LBK's Xero tenant — if a rule auto-categorises feed deposits as revenue while lbkmk also posts revenue-crediting Invoices, the books double. lbkmk's posting strategy (`ACCREC AUTHORISED` invoices cleared by feed deposits via "Find & Match") depends on the answer.
-- **Event-specific ticket caps** *(issue #53)*. Recommendation: per-event Inventory Items (clear stock semantics, clean historical reporting), with Item codes like `TICKET-SPRING2026-ADULT`. The alternative (shared "Adult Pass" Item reused across events) loses per-event stock caps. Confirm before locking the model.
-- **LBK Xero plan tier** *(issue #55)*. Tracked inventory requires Standard+; multi-currency requires Premium. If LBK is on a lower tier the Item-based catalog approach breaks.
-- **Chart-of-accounts mapping** *(issue #56)*. Which Account Code does each Inventory Item kind post to? Merch → one account; Tickets → another? Stripe fees → one account; Square fees → another?
+- **Xero plan invoice cap** *(issue #55)*. LBK is on the Xero **Early** tier, which caps invoices at 20 per month (verified against Xero docs); beyond that, invoices save as drafts until upgrade or the next month. lbkmk's per-sale itemized posting will exceed this. Owner decision pending: upgrade to Growing (unlimited invoices), or have lbkmk aggregate or batch invoices (which changes per-sale granularity). Reframed [v0.3] from "confirm the tier"; tracked inventory and multi-currency are moot (GBP-only sales, untracked Items).
+- **Xero posting vs the clearing-account flow** *(issue #51)*. Stripe and Square are connected as live Xero bank feeds with active bank rules; the owner reconciles personally via a manual clearing-account flow (itemized sales post to a Stripe or Square clearing account, the bulk deposit is transferred to the Novo bank account, then reconciled against the transfer; Stripe fees are auto-stripped in the Stripe clearing account; Square fee handling is unknown). lbkmk's `ACCREC` Invoices must integrate with this flow, likely replacing the manual itemization step, without double-counting against the bank rules. Reframed [v0.3] from "do bank rules exist" (yes) into a posting-integration design decision.
 
-### Still open — non-blocking (design accommodates either answer)
+### Still open: non-blocking (design accommodates either answer)
 
-- **Per-customer vs umbrella Xero Contact strategy** *(issue #52)*. Recommendation: one umbrella Contact per channel. Per-customer requires Contact resolution + GDPR deletion path and explodes the Contacts list. Owner conversation: is per-customer reporting needed in v1?
 - **Refund / return flow** — out of scope for v1, but `docs/integrations/{stripe,squarespace,square,tickettailor,xero}.md` already document the per-channel refund event shapes. v2 design can reference those directly; no fresh research needed. Owner's current manual refund workflow worth capturing now so v2 doesn't surprise them *(issue #54)*.
 - **TicketTailor ↔ Stripe deterministic correlation** *(issues #3, #29)*. Empirical test against one real LBK TicketTailor-originated Stripe charge — 15-minute resolution. Affirmative answer upgrades most TicketTailor sales from `confidence: medium` to `confidence: high` and removes the owner-prompt step.
-- **LBK Stripe account configuration** *(issues #27, #34)*. Confirms whether Squarespace and TicketTailor charges land in LBK's own Stripe Dashboard (merchant-of-record assumption) or under a Connect-platform account (different event delivery story).
+- **LBK Stripe dashboard lookups** *(issues #34, #32, #31)*. Owner granted read-only Stripe access (2026-06-02). Verify directly: whether Squarespace or TicketTailor appear under Connect / Connected accounts (#34), the account's default API version (#32), and the rate-limit tier (#31).
 
 The vocabulary alignment questions in §7 are unchanged and remain blocking on owner review independently.
 
