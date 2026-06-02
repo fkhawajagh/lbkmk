@@ -107,11 +107,11 @@ The original ADR stays in the log as the historical record.
 
 ## Tagging
 
-Every ADR carries `type/adr` plus at least one `topic/` facet. The `domain/` and
-`phase/` facets are **not yet anchored** — they are pinned to a controlled
-vocabulary once carry-over item **(C) doc tag vocabulary** lands. Until then, use
-`type/adr` + `topic/` only, to avoid seeding free-typed values that the later
-vocabulary would have to reconcile.
+Every ADR carries `type/adr` plus at least one `topic/` facet, and may add
+`domain/`, `phase/`, or `external/` facets where relevant. All values come from
+the controlled vocabulary in [`../tags.md`](../tags.md) — choose existing values
+rather than free-typing new ones; a new `topic/` value is added to `../tags.md`
+in the same PR that first uses it.
 
 ## Index
 
