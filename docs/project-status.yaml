@@ -33,14 +33,10 @@ phases:
     started_on: null
     completed_on: null
     open_questions:
-      - slug: "xero-bank-rules"
-        body: "Existing Xero bank-rule config in LBK's tenant: if a rule auto-categorises feed deposits as revenue while lbkmk also posts revenue invoices, the books double. The posting strategy depends on the answer. Blocking — issue #51."
-      - slug: "xero-plan-tier"
-        body: "LBK's Xero plan tier: tracked inventory needs Standard+, multi-currency needs Premium. A lower tier breaks the Item-based catalog. Blocking — issue #55."
-      - slug: "chart-of-accounts"
-        body: "Which Account Code each Inventory Item kind posts to (merch vs tickets; Stripe vs Square fees). Blocking — issue #56."
-      - slug: "event-ticket-caps"
-        body: "Per-event Inventory Items vs a shared reused Item — affects per-event stock caps and historical reporting. Confirm before locking the model. Blocking — issue #53."
+      - slug: "xero-plan-invoice-cap"
+        body: "LBK is on the Xero Early tier, which caps invoices at 20 per month (verified against Xero docs). Per-sale itemized posting will exceed this. Owner decision pending: upgrade to Growing (unlimited invoices), or have lbkmk batch invoices (changes per-sale granularity). Blocking, issue #55."
+      - slug: "xero-posting-clearing-account"
+        body: "Stripe and Square are live Xero bank feeds with active bank rules; the owner reconciles via a manual clearing-account flow. lbkmk ACCREC posting must integrate with that flow without double-counting. Design follow-up. Blocking, issue #51."
 
   - key: "2"
     title: "Add Square + TicketTailor"
