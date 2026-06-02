@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "title": "lbkmk Project Status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "updated_on", "phases"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "updated_on": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/phase_entry"
+      }
+    }
+  },
+  "definitions": {
+    "date_or_null": {
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "open_question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "body"],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9\\-]+$",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "phase_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "title",
+        "stage",
+        "status",
+        "doc_slug",
+        "depends_on",
+        "pr_numbers",
+        "started_on",
+        "completed_on",
+        "open_questions"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^\\d+(\\.\\d+)*[a-z]?$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "type": "string",
+          "enum": ["Design", "Plan", "Implementation", "Review", "Merged"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Pending", "In Progress", "Completed"]
+        },
+        "doc_slug": {
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_\\-/.]+$",
+              "allOf": [
+                {"not": {"pattern": "^docs/"}},
+                {"not": {"pattern": "\\.md$"}}
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+)*[a-z]?$"
+          }
+        },
+        "pr_numbers": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "started_on": {
+          "$ref": "#/definitions/date_or_null"
+        },
+        "completed_on": {
+          "$ref": "#/definitions/date_or_null"
+        },
+        "open_questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/open_question"
+          }
+        }
+      }
+    }
+  }
+}

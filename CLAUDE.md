@@ -139,6 +139,22 @@ Synthesize into one structured report:
 
 Keep the report tight (under one screen). The user can drill into any item by asking a followup.
 
+## Project Status Tracking
+
+Distinct from the **Project Status** query above. That query is a live, human-facing snapshot synthesized on demand and never stored. This is the **structured, machine-readable** record — they coexist, they do not conflict.
+
+`docs/project-status.yaml` is the canonical machine-readable record of lbkmk's delivery phases (and sub-phases, once a phase is decomposed). Its shape is fixed by `docs/project-status.schema.json` (JSON Schema draft-07). There is no validator yet — with the file small and pre-build, drift risk is low; add one (a Python check, or a Mix task once `mix.exs` lands) when the file grows. Design rationale: `docs/plans/2026-06-02-project-status-yaml-design.md`.
+
+**The orchestrator edits this file by hand at exactly three triggers:**
+
+| Trigger | What to update |
+|---|---|
+| Phase work starts (worktree created, design begins) | Set `status: In Progress`, `started_on: <today>`. |
+| Stage advances (Design → Plan → Implementation → Review → Merged) or a PR opens | Bump `stage`; append the PR number to `pr_numbers`. |
+| Phase completes (PR merged, glean done) | Set `stage: Merged`, `status: Completed`, `completed_on: <merge date>`; copy any deferred-work items into `open_questions`. |
+
+`updated_on` is set on every edit. The file is never written programmatically — only hand-edited at the triggers above. Adding a field requires updating both `docs/project-status.schema.json` and `schema_version` in the YAML, in the same commit.
+
 ## External Agent Workflow
 
 When an implementation plan is handed off to a separately-orchestrated external agent (Claude- or Kimi-driven, not the main interactive session), the plan document **must** reference the standing External Agent Protocol. Add this line as the final paragraph of the plan, after task-specific instructions:
