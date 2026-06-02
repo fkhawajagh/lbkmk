@@ -31,5 +31,9 @@ priv/static/cache_manifest.json
 .worktrees/
 docs/.context/
 
+# Session-end handoff bridges (gitignored; only the convention README is committed)
+docs/.handoff/*
+!docs/.handoff/README.md
+
 /.quarto/
 **/*.quarto_ipynb
