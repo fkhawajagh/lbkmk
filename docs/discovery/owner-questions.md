@@ -14,6 +14,7 @@ tags:
   - external/squarespace
   - external/stripe
   - external/square
+  - external/tickettailor
   - external/xero
 related:
   - project-status.yaml
