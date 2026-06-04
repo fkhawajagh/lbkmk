@@ -36,7 +36,7 @@ Adopt a lightweight Architecture Decision Record (ADR) convention under
 | Choice | Decision | Why |
 |---|---|---|
 | Template format | **MADR-lite** — Status → Context & Problem → Decision Drivers → Considered Options → Decision Outcome (per-option pros/cons) → Consequences | Captures the alternatives and the *why*, not just the verdict; industry-standard and tooling-friendly. |
-| Frontmatter | ADR-native `status` (Proposed/Accepted/Deprecated/Superseded) as canonical; keep faceted `tags` + `related`; **omit `version`** | ADRs are immutable-by-supersession, so a major.minor version is meaningless; status in frontmatter keeps the Obsidian graph honest. Diverges deliberately from the house major.minor doc-version rule. |
+| Frontmatter | ADR-native `status` (Proposed/Accepted/Deprecated/Superseded) as canonical; an explicit `id` (e.g. `ADR-0001`); keep faceted `tags` + `related`; **omit `version`** | ADRs are immutable-by-supersession, so a major.minor version is meaningless; status in frontmatter keeps the Obsidian graph honest. The explicit `id` aids cross-referencing and the Obsidian graph. Diverges deliberately from the house major.minor doc-version rule. |
 | Naming | **`NNNN-slug.md`**, zero-padded; date in frontmatter | Stable sequential IDs let ADRs cross-reference each other ("superseded by ADR-0007"); ordered by decision sequence. Diverges from the date-prefixed `docs/plans/` style — intentional, ADRs are their own doc type. |
 | Seed | `0000-record-architecture-decisions.md` (Accepted) only | A complete, non-controversial meta-ADR that documents the convention itself and doubles as the first worked example. No unsettled decision (e.g. "no Ash") is asserted as Accepted. |
 

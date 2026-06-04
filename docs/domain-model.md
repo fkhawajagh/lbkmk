@@ -1,7 +1,7 @@
 ---
 title: Little Big Kids — Domain Model
 audience: Owner review (technical)
-status: Draft v0.3
+status: Draft v0.4
 date: 2026-05-22
 ---
 

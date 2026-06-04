@@ -94,12 +94,13 @@ Five phase-level entries from [`solution-proposal.md`](../solution-proposal.md) 
 
 Populated by **referencing** the blocking issues, not duplicating the domain model:
 
-- **Phase 1** carries the four blocking scope questions — bank-rule configuration
-  (#51), Xero plan tier (#55), chart-of-accounts mapping (#56), event-specific
-  ticket caps (#53) — as `open_questions`, since Phase 1 is the first phase that
-  needs Xero.
 - **Phase 0** carries the three §7 vocabulary questions (Approval / Drift / Channel
   SKU), since locking the vocabulary is a discovery task.
+- **Phase 1** historically carried four blocking scope questions — bank-rule
+  configuration (#51), Xero plan tier (#55), chart-of-accounts mapping (#56),
+  event-specific ticket caps (#53). All four are now resolved (see
+  `domain-model.md` §8 v0.3–v0.4). Phase 1 `open_questions` is empty pending
+  new blockers.
 
 Each `body` is one or two sentences citing its issue.
 
