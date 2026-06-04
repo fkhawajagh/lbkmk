@@ -1,9 +1,9 @@
 ---
 title: Document tag vocabulary
 status: active
-version: "1.0"
+version: "1.1"
 date: 2026-06-02
-updated: 2026-06-02
+updated: 2026-06-04
 tags:
   - type/reference
   - topic/process
@@ -109,9 +109,9 @@ Anchored to the per-tool references under [`integrations/`](integrations/).
 
 The **open** facet. Seed values:
 
-`topic/process`, `topic/documentation`.
+`topic/process`, `topic/documentation`, `topic/integration`, `topic/accounting`.
 
-These are the only `topic/` values currently in use; the facet grows from here as
+These are the `topic/` values currently in use; the facet grows from here as
 documents introduce new cross-cutting threads (see
 [Growing and changing the vocabulary](#growing-and-changing-the-vocabulary)).
 

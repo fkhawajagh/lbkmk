@@ -2,7 +2,15 @@
 title: Reconciliation Catalog — doc clarification design
 version: "1.0"
 date: 2026-05-22
+updated: 2026-06-04
 status: approved
+tags:
+  - type/design
+  - domain/reconciliation
+  - topic/process
+related:
+  - ../solution-proposal.md
+  - ../domain-model.md
 ---
 
 > **Document Version: 1.0** | 2026-05-22
@@ -32,7 +40,7 @@ The system performs four distinct reconciliations. Each has its own pair of side
 
 - **Kind 1 (sale ↔ payment correlation):** in the Phoenix `Reconciliation` context, triggered by webhook ingest from Make. The matching ladder (timestamp + amount + reference) runs here. Square does not need this step because its sale and payment arrive in one payload.
 - **Kind 2 (line totals ↔ event gross):** also in the `Reconciliation` context, on ingest. A failure routes the Sale Event to `needs_resolution` with reason "lines do not sum to gross".
-- **Kind 3 (Sale Event ↔ Xero Invoice):** in the Phoenix `Xero` adapter (or Make Xero scenario, per the §3 design rule). Triggered by owner approval. Idempotent on the `Reference` field carrying the Sale Event id.
+- **Kind 3 (Sale Event ↔ Xero Invoice/BankTransaction):** in the Phoenix `XeroWrites` context, which posts directly to Xero (per ADR-0001, Phoenix holds OAuth credentials and posts `RECEIVE` BankTransactions; Make is not in the Xero path). Triggered by owner approval. Idempotent on the `Reference` field carrying the Sale Event id.
 - **Kind 4 (approved invoices ↔ payout):** in a scheduled `Reconciliation.sweep_payouts/0` job that fires daily. Pulls payout rows from Xero bank-feed view; pulls approved Invoice nets from local state; computes the comparison.
 
 ## Edits
@@ -54,7 +62,7 @@ The system performs four distinct reconciliations. Each has its own pair of side
 |---|---|
 | §3 Glossary, "Reconciliation" entry | Rephrase to: "Reconciliation is the family of comparisons that confirm what we recorded matches what actually happened. The four specific kinds — their sides, sources, triggers, and success criteria — are catalogued in `solution-proposal.md` §6." |
 | §4 Payout entity, Lifecycle | Append cross-reference on `drift_flagged`: "(failure state of kind 4 — see `solution-proposal.md` §6)" |
-| §6 Business Rules, "Reconciliation rules" subsection | Annotate each rule with the catalog kind it governs: rule 1 → kinds 1 + 2 (ingress); rule 2 → kind 1 (correlation); rule 3 → kind 2 (line totals); rule 4 → kind 3 (approval → Xero). |
+| §6 Business Rules, "Reconciliation rules" subsection | Annotate each rule with the catalog kind it governs: rule 1 → kinds 2 + 3 (ingress); rule 2 → kind 1 (correlation); rule 3 → kind 2 (line totals); rule 4 → kind 3 (approval → Xero). |
 | §7 Open vocabulary questions | Remove the "Reconciliation vs matching vs reconciling" bullet. LBK used "reconciliation" in feedback; vocabulary is settled. |
 
 ## Out of scope
