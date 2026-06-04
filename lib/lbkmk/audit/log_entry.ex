@@ -24,8 +24,24 @@ defmodule Lbkmk.Audit.LogEntry do
   @doc false
   def changeset(log_entry, attrs) do
     log_entry
-    |> cast(attrs, [:tenant_id, :actor_type, :actor_id, :subject_type, :subject_id, :action, :metadata, :occurred_at])
-    |> validate_required([:tenant_id, :actor_type, :subject_type, :subject_id, :action, :occurred_at])
+    |> cast(attrs, [
+      :tenant_id,
+      :actor_type,
+      :actor_id,
+      :subject_type,
+      :subject_id,
+      :action,
+      :metadata,
+      :occurred_at
+    ])
+    |> validate_required([
+      :tenant_id,
+      :actor_type,
+      :subject_type,
+      :subject_id,
+      :action,
+      :occurred_at
+    ])
     |> validate_inclusion(:actor_type, @actor_types)
   end
 end

@@ -11,13 +11,15 @@ defmodule Lbkmk.ReconciliationTest do
 
   describe "approve/2" do
     test "returns not_implemented" do
-      assert {:error, :not_implemented} = Reconciliation.approve(%Lbkmk.Ingest.SaleEvent{}, "user-1")
+      assert {:error, :not_implemented} =
+               Reconciliation.approve(%Lbkmk.Ingest.SaleEvent{}, "user-1")
     end
   end
 
   describe "reject/2" do
     test "returns not_implemented" do
-      assert {:error, :not_implemented} = Reconciliation.reject(%Lbkmk.Ingest.SaleEvent{}, "user-1")
+      assert {:error, :not_implemented} =
+               Reconciliation.reject(%Lbkmk.Ingest.SaleEvent{}, "user-1")
     end
   end
 

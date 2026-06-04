@@ -20,8 +20,20 @@ defmodule Lbkmk.XeroWrites.BankTransaction do
   @doc false
   def changeset(bank_transaction, attrs) do
     bank_transaction
-    |> cast(attrs, [:tenant_id, :sale_event_id, :xero_bank_transaction_id, :xero_reference, :posted_at])
-    |> validate_required([:tenant_id, :sale_event_id, :xero_bank_transaction_id, :xero_reference, :posted_at])
+    |> cast(attrs, [
+      :tenant_id,
+      :sale_event_id,
+      :xero_bank_transaction_id,
+      :xero_reference,
+      :posted_at
+    ])
+    |> validate_required([
+      :tenant_id,
+      :sale_event_id,
+      :xero_bank_transaction_id,
+      :xero_reference,
+      :posted_at
+    ])
     |> unique_constraint([:tenant_id, :xero_bank_transaction_id])
     |> unique_constraint([:tenant_id, :sale_event_id])
     |> foreign_key_constraint(:sale_event_id)

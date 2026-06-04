@@ -24,7 +24,14 @@ defmodule Lbkmk.Inventory.ChannelSku do
   @doc false
   def changeset(channel_sku, attrs) do
     channel_sku
-    |> cast(attrs, [:tenant_id, :inventory_item_id, :channel, :external_id, :external_name, :state])
+    |> cast(attrs, [
+      :tenant_id,
+      :inventory_item_id,
+      :channel,
+      :external_id,
+      :external_name,
+      :state
+    ])
     |> validate_required([:tenant_id, :channel, :external_id])
     |> validate_inclusion(:channel, @channels)
     |> validate_inclusion(:state, @states)

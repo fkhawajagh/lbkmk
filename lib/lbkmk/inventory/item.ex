@@ -25,7 +25,15 @@ defmodule Lbkmk.Inventory.Item do
   @doc false
   def changeset(item, attrs) do
     item
-    |> cast(attrs, [:tenant_id, :xero_item_code, :name, :kind, :current_stock, :unit_cost, :revenue_account_code])
+    |> cast(attrs, [
+      :tenant_id,
+      :xero_item_code,
+      :name,
+      :kind,
+      :current_stock,
+      :unit_cost,
+      :revenue_account_code
+    ])
     |> validate_required([:tenant_id, :xero_item_code, :name, :kind])
     |> validate_inclusion(:kind, @kinds)
     |> validate_number(:current_stock, greater_than_or_equal_to: 0)

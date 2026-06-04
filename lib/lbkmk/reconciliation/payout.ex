@@ -25,8 +25,25 @@ defmodule Lbkmk.Reconciliation.Payout do
   @doc false
   def changeset(payout, attrs) do
     payout
-    |> cast(attrs, [:tenant_id, :processor, :processor_payout_id, :gross, :fee, :net, :paid_on, :state])
-    |> validate_required([:tenant_id, :processor, :processor_payout_id, :gross, :net, :paid_on, :state])
+    |> cast(attrs, [
+      :tenant_id,
+      :processor,
+      :processor_payout_id,
+      :gross,
+      :fee,
+      :net,
+      :paid_on,
+      :state
+    ])
+    |> validate_required([
+      :tenant_id,
+      :processor,
+      :processor_payout_id,
+      :gross,
+      :net,
+      :paid_on,
+      :state
+    ])
     |> validate_inclusion(:processor, @processors)
     |> validate_inclusion(:state, @states)
     |> unique_constraint([:tenant_id, :processor, :processor_payout_id])

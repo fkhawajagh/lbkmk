@@ -45,7 +45,15 @@ defmodule Lbkmk.Ingest.SaleEvent do
       :raw_payload,
       :stripe_charge_id
     ])
-    |> validate_required([:tenant_id, :channel, :external_event_id, :occurred_at, :gross, :net, :currency])
+    |> validate_required([
+      :tenant_id,
+      :channel,
+      :external_event_id,
+      :occurred_at,
+      :gross,
+      :net,
+      :currency
+    ])
     |> validate_inclusion(:channel, @channels)
     |> validate_inclusion(:state, @states)
     |> unique_constraint([:tenant_id, :channel, :external_event_id])

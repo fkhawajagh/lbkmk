@@ -22,8 +22,23 @@ defmodule Lbkmk.Ingest.SaleEventLine do
   @doc false
   def changeset(line, attrs) do
     line
-    |> cast(attrs, [:tenant_id, :sale_event_id, :channel_sku_id, :quantity, :unit_price, :subtotal, :line_index])
-    |> validate_required([:tenant_id, :sale_event_id, :quantity, :unit_price, :subtotal, :line_index])
+    |> cast(attrs, [
+      :tenant_id,
+      :sale_event_id,
+      :channel_sku_id,
+      :quantity,
+      :unit_price,
+      :subtotal,
+      :line_index
+    ])
+    |> validate_required([
+      :tenant_id,
+      :sale_event_id,
+      :quantity,
+      :unit_price,
+      :subtotal,
+      :line_index
+    ])
     |> validate_number(:quantity, greater_than: 0)
     |> validate_number(:line_index, greater_than_or_equal_to: 0)
     |> foreign_key_constraint(:sale_event_id)

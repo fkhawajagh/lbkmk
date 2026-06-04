@@ -30,7 +30,13 @@ defmodule Lbkmk.Reconciliation.Correlation do
       :confidence,
       :strategy
     ])
-    |> validate_required([:tenant_id, :primary_sale_event_id, :payment_sale_event_id, :confidence, :strategy])
+    |> validate_required([
+      :tenant_id,
+      :primary_sale_event_id,
+      :payment_sale_event_id,
+      :confidence,
+      :strategy
+    ])
     |> validate_inclusion(:confidence, @confidences)
     |> validate_inclusion(:strategy, @strategies)
     |> unique_constraint([:tenant_id, :primary_sale_event_id, :payment_sale_event_id])
