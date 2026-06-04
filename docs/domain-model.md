@@ -5,13 +5,15 @@ status: Draft v0.3
 date: 2026-05-22
 ---
 
-> **Document Version: 0.3** | 2026-05-22 (updated 2026-06-02)
+> **Document Version: 0.4** | 2026-05-22 (updated 2026-06-04)
 >
 > Draft for owner review. The vocabulary, entities, and business rules below are the contract this system is built around. Sign-off here precedes any work on the solution proposal.
 >
 > **Changed in v0.2:** corrections driven by the integration research under `docs/integrations/*.md`. The model's shape and vocabulary are unchanged. Notable corrections: §4.2 Line Item invariant (the channel that needs line-item enrichment is **Squarespace**, not TicketTailor), §4.2 Sale Event fee note (Stripe fees arrive via a separate object), §8 open-scope questions updated with current status. Specific changes are tagged `[v0.2]`.
 >
 > **Changed in v0.3:** §8 open-scope questions updated with the owner's answers to the discovery questionnaire (2026-06-02; see `docs/discovery/owner-questions.md` and issues #19 through #62). Two of the four blocking questions resolved (#56 chart of accounts, #53 ticket Items) and two reframed from discovery into design decisions (#55 Xero invoice cap, #51 clearing-account posting); two non-blocking questions also resolved (#52 Contact strategy, #27 Stripe merchant-of-record). Specific changes are tagged `[v0.3]`.
+>
+> **Changed in v0.4:** §8 blocking questions #55 and #51 resolved. Xero plan decision: upgrade to unlimited-invoice tier (assumed). Posting strategy: `RECEIVE` BankTransactions to clearing account per ADR-0001. Specific changes are tagged `[v0.4]`.
 
 ## 1. Purpose
 
@@ -313,7 +315,7 @@ These are terms where we want the owner to weigh in before locking the vocabular
 
 ## 8. Open scope questions (for owner review)
 
-**[v0.3] Status update:** the owner answered the discovery questionnaire on 2026-06-02 (see [discovery/owner-questions.md](discovery/owner-questions.md) and issues #19 through #62). Of the four blocking questions, two are now resolved (#56, #53) and two are reframed into design decisions (#55, #51); the per-customer Contact (#52) and Stripe merchant-of-record (#27) questions are also resolved. Issues #2 through #64 remain the full tier-2 research backlog.
+**[v0.4] Status update:** the owner answered the discovery questionnaire on 2026-06-02 (see [discovery/owner-questions.md](discovery/owner-questions.md) and issues #19 through #62). Of the four blocking questions, two resolved in v0.3 (#56, #53) and two resolved in v0.4 (#55, #51); the per-customer Contact (#52) and Stripe merchant-of-record (#27) questions are also resolved. Issues #2 through #64 remain the full tier-2 research backlog.
 
 ### Resolved
 
@@ -325,8 +327,8 @@ These are terms where we want the owner to weigh in before locking the vocabular
 
 ### Still open: blocking (must close before implementation starts)
 
-- **Xero plan invoice cap** *(issue #55)*. LBK is on the Xero **Early** tier, which caps invoices at 20 per month (verified against Xero docs); beyond that, invoices save as drafts until upgrade or the next month. lbkmk's per-sale itemized posting will exceed this. Owner decision pending: upgrade to Growing (unlimited invoices), or have lbkmk aggregate or batch invoices (which changes per-sale granularity). Reframed [v0.3] from "confirm the tier"; tracked inventory and multi-currency are moot (GBP-only sales, untracked Items).
-- **Xero posting vs the clearing-account flow** *(issue #51)*. Stripe and Square are connected as live Xero bank feeds with active bank rules; the owner reconciles personally via a manual clearing-account flow (itemized sales post to a Stripe or Square clearing account, the bulk deposit is transferred to the Novo bank account, then reconciled against the transfer; Stripe fees are auto-stripped in the Stripe clearing account; Square fee handling is unknown). lbkmk's `ACCREC` Invoices must integrate with this flow, likely replacing the manual itemization step, without double-counting against the bank rules. Reframed [v0.3] from "do bank rules exist" (yes) into a posting-integration design decision.
+- ~~**Xero plan invoice cap**~~ *(issue #55)*. **Resolved [v0.4].** Decision: upgrade Xero to the unlimited-invoice tier (Grow or equivalent, ~$42–50/month). lbkmk posts one document per Sale Event with full itemization. No batching logic needed in v1.
+- ~~**Xero posting vs the clearing-account flow**~~ *(issue #51)*. **Resolved [v0.4].** Decision: lbkmk posts `RECEIVE` BankTransactions (not `ACCREC` Invoices) to the owner's existing Stripe/Square clearing accounts. `RECEIVE` is a sales transaction in Xero's model and decrements inventory via `ItemCode` exactly as `ACCREC` does. The owner's existing reconciliation flow (clearing account → transfer to Novo → reconcile transfer) continues unchanged. See ADR-0001 for the full rationale and rejected alternatives.
 
 ### Still open: non-blocking (design accommodates either answer)
 

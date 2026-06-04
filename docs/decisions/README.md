@@ -120,3 +120,4 @@ Maintained by hand — add a row when you add an ADR.
 | ADR | Title | Status | Date |
 |---|---|---|---|
 | [ADR-0000](0000-record-architecture-decisions.md) | Record architecture decisions | Accepted | 2026-06-02 |
+| [ADR-0001](0001-xero-posting-strategy.md) | Xero posting strategy — clearing-account integration | Proposed | 2026-06-04 |

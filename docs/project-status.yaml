@@ -3,7 +3,7 @@
 # at the three triggers in CLAUDE.md "Project Status Tracking". Distinct from the
 # live "project status" query (see CLAUDE.md "Project Status").
 schema_version: "1.0"
-updated_on: "2026-06-02"
+updated_on: "2026-06-04"
 
 phases:
   - key: "0"
@@ -32,11 +32,7 @@ phases:
     pr_numbers: []
     started_on: null
     completed_on: null
-    open_questions:
-      - slug: "xero-plan-invoice-cap"
-        body: "LBK is on the Xero Early tier, which caps invoices at 20 per month (verified against Xero docs). Per-sale itemized posting will exceed this. Owner decision pending: upgrade to Growing (unlimited invoices), or have lbkmk batch invoices (changes per-sale granularity). Blocking, issue #55."
-      - slug: "xero-posting-clearing-account"
-        body: "Stripe and Square are live Xero bank feeds with active bank rules; the owner reconciles via a manual clearing-account flow. lbkmk ACCREC posting must integrate with that flow without double-counting. Design follow-up. Blocking, issue #51."
+    open_questions: []
 
   - key: "2"
     title: "Add Square + TicketTailor"
