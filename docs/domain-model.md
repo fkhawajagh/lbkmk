@@ -39,7 +39,7 @@ LBK sells across four channels:
 
 Accounting lives in Xero. Today, Xero receives bank-feed data from Stripe and Square via Xero's **official direct feed integrations** (a "Stripe direct feed" virtual bank account that mirrors every charge/fee/refund/payout; a Square integration that posts daily summaries as bank transactions). The feeds give Xero deposits and totals but no itemized detail. This means LBK cannot answer "how many Adult Passes did we sell at the convention last weekend" or "how much revenue came from t-shirts vs books last month" from Xero alone.
 
-This system bridges that gap: it captures per-item sale data from every channel and posts itemized invoices to Xero, decrementing tracked inventory at the same time. **[v0.2] Critical positioning:** lbkmk's job is to publish itemized Invoices that the existing Stripe/Square bank-feed deposits then **clear** via Xero's "Find & Match" — not to ingest the deposits itself. Posting Invoices while a bank rule also auto-categorises feed deposits as revenue would double-count the books. The exact configuration of those bank rules in LBK's Xero tenant is the load-bearing open question (§8).
+This system bridges that gap: it captures per-item sale data from every channel and posts itemized transactions to Xero, decrementing tracked inventory at the same time. **[v0.2] Critical positioning:** lbkmk's job is to publish itemized Invoices (Xero `RECEIVE` BankTransactions per ADR-0001) that integrate with the owner's existing clearing-account flow — not to ingest the deposits itself. Posting while a bank rule also auto-categorises feed deposits as revenue would double-count the books. The exact configuration of those bank rules in LBK's Xero tenant was the load-bearing open question (§8, now resolved).
 
 ## 3. Glossary
 
@@ -56,10 +56,10 @@ The following terms have **one specific meaning** in this system.
 | **Reconciliation** | The family of comparisons that confirm what we recorded matches what actually happened. The four specific kinds — their sides, source systems, triggers, and success criteria — are catalogued in `solution-proposal.md` §6 ("Reconciliation Catalog"). The cadence on which each kind runs (continuous vs daily) is described in `solution-proposal.md` §7. |
 | **Reconciliation State** | The lifecycle position of a Sale Event: where it is in the path from "just arrived" to "posted to Xero". See §5. |
 | **Approval** | The human action by which the owner confirms that a Sale Event is correctly captured and authorizes it to be posted to Xero. Approval is irreversible in the sense that an approved-and-posted event must be reversed via an explicit void, not by editing or deleting the original. |
-| **Invoice** | The Xero document we create from an approved Sale Event. It carries the itemized lines, the payment reference, and the total. Posting an Invoice in Xero automatically decrements tracked Inventory Items and records the revenue against the right accounts. |
+| **Invoice** | The Xero document we create from an approved Sale Event. In v1 this is a `RECEIVE` BankTransaction (not an `ACCREC` Invoice — see ADR-0001). It carries the itemized lines, the payment reference, and the total. Posting an Invoice in Xero automatically decrements tracked Inventory Items and records the revenue against the right accounts. |
 | **Payout** | A bank deposit from a payment processor (Stripe, Square) into LBK's bank account, representing the net of many individual charges minus fees, over some period. Today, these arrive in Xero via existing bank feeds. |
-| **Bank Feed** | An existing Xero integration that pulls Stripe and Square payouts into Xero as bank transactions. This system does **not** replace the bank feed; it complements it by providing the itemized invoices that the bank feed deposits should reconcile against. |
-| **Drift** | A discrepancy between the sum of approved Invoices for a period and the corresponding Payout total. Drift is surfaced for review, not auto-resolved. |
+| **Bank Feed** | An existing Xero integration that pulls Stripe and Square payouts into Xero as bank transactions. This system does **not** replace the bank feed; it complements it by providing the itemized transactions that the bank feed deposits should reconcile against. |
+| **Drift** | A discrepancy between the sum of approved Invoices (Xero `RECEIVE` BankTransactions) for a period and the corresponding Payout total. Drift is surfaced for review, not auto-resolved. |
 | **Audit Log** | An append-only record of every state transition and every external write (especially to Xero). Forensic-quality: we can always answer "who did what when, and what did the external system say back". |
 
 ## 4. Core Entities
@@ -203,13 +203,13 @@ Each section gives: **purpose**, **identity**, **key attributes**, **lifecycle**
 
 #### Invoice
 
-- **Purpose:** The Xero output created by approving a Sale Event.
-- **Identity:** Xero invoice ID (assigned by Xero on creation).
-- **Key attributes:** Xero invoice number, line items mirroring the Sale Event's Line Items, payment reference back to the Sale Event id, posted-at timestamp.
+- **Purpose:** The Xero output created by approving a Sale Event. In v1 this is a `RECEIVE` BankTransaction (ADR-0001); `ACCREC` Invoice is the fallback if the owner later switches workflows.
+- **Identity:** Xero BankTransaction ID (assigned by Xero on creation).
+- **Key attributes:** Xero BankTransaction ID, line items mirroring the Sale Event's Line Items, payment reference back to the Sale Event id (`Reference: "lbkmk:<sale_event.id>"`), posted-at timestamp.
 - **Lifecycle:** `posting` (in flight to Xero) → `posted` (Xero confirmed) → optionally `voided` (explicit reversal).
 - **Invariants:**
   - At most one Invoice exists per Sale Event (idempotent on the Xero side via the `Reference` field).
-  - Voiding an Invoice marks the originating Sale Event as `posted` but flags it as `voided`; the Sale Event stays in history but cannot be re-approved without explicit re-instatement.
+  - Reversing an Invoice (negating the BankTransaction line items) marks the originating Sale Event as `posted` but flags it as `voided`; the Sale Event stays in history but cannot be re-approved without explicit re-instatement.
 
 #### Payout
 
@@ -259,10 +259,10 @@ stateDiagram-v2
 - **`needs_resolution`** — Cannot proceed without human input. Reason is recorded (unmapped SKU, no payment correlation found, amount mismatch, etc.).
 - **`approved`** — Owner has clicked approve. Queued for posting to Xero.
 - **`posting`** — In flight to Xero (transient — typically seconds).
-- **`posted`** — Xero confirmed. Invoice exists. Inventory decremented.
+- **`posted`** — Xero confirmed. Invoice (BankTransaction) exists. Inventory decremented.
 - **`failed`** — Xero rejected the post. Reason is recorded; owner can retry after fixing the underlying issue.
 - **`rejected`** — Owner explicitly rejected (e.g. test transaction, known duplicate from a webhook double-fire).
-- **`voided`** — Posted invoice has been voided in Xero via this system.
+- **`voided`** — Posted Invoice has been reversed in Xero via this system.
 
 **Why state `posted` is terminal-ish:** any further reversal must go through `voided`, never back through `pending`. This protects audit integrity — every observed change in Xero has a traceable cause.
 
@@ -274,14 +274,14 @@ These are the non-negotiable rules the system enforces. They override convenienc
 
 (See the Reconciliation Catalog in `solution-proposal.md` §6 for the four kinds these rules govern. The "(kind N)" tags below point at the corresponding catalog row.)
 
-1. **A Sale Event without resolved Line Items is not approvable.** Every Line Item must point to an active Channel SKU pointing to an Inventory Item. *(Precondition for kinds 2 and 3 — without resolved lines, neither the internal sum check nor the Xero invoice post can run.)*
+1. **A Sale Event without resolved Line Items is not approvable.** Every Line Item must point to an active Channel SKU pointing to an Inventory Item. *(Precondition for kinds 2 and 3 — without resolved lines, neither the internal sum check nor the Xero post can run.)*
 2. **A Sale Event without a payment-side correlation is `needs_resolution`** — except for Square events, which self-correlate. *(Governs kind 1.)*
 3. **A Sale Event whose Line Items don't sum to the gross is `needs_resolution`**, with a tolerance of $0.50 to absorb rounding and small fee anomalies. *(Governs kind 2.)*
 4. **Approval is a deliberate, human-only act.** No event auto-approves, even with high confidence and clean data. The system can pre-clear an event (move it to `pending` and surface it as "ready") but cannot post on the owner's behalf. *(Governs the trigger of kind 3.)*
 
 ### Inventory rules
 
-5. **Xero is the only writer of inventory counts.** This system never writes stock levels directly; it does so only as a side-effect of posting an Invoice.
+5. **Xero is the only writer of inventory counts.** This system never writes stock levels directly; it does so only as a side-effect of posting an Invoice (Xero `RECEIVE` BankTransaction).
 6. **Inventory snapshots are read-only mirrors**, refreshed on a schedule. Stale snapshots are acceptable; conflicting writes are not.
 7. **Tickets are inventory.** A ticket type is a tracked Inventory Item with `kind = ticket` and a finite stock equal to the event's capacity. Selling a ticket decrements stock the same way selling a t-shirt does.
 

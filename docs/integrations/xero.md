@@ -4,7 +4,7 @@
 
 ## Role in lbkmk
 
-Xero is **the destination** for lbkmk. Unlike the four ingestion channels (Squarespace, Stripe, Square, TicketTailor), Xero plays **no role** in the inbound sale-recording path — it is purely an outbound recipient of itemized invoices, plus the source of truth for inventory levels and the chart of accounts.
+Xero is **the destination** for lbkmk. Unlike the four ingestion channels (Squarespace, Stripe, Square, TicketTailor), Xero plays **no role** in the inbound sale-recording path — it is purely an outbound recipient of itemized transactions (v1: `RECEIVE` BankTransactions per ADR-0001), plus the source of truth for inventory levels and the chart of accounts.
 
 The lbkmk Xero responsibilities, in one picture:
 
@@ -82,9 +82,9 @@ Pick the minimum scopes that cover the operations lbkmk performs. From the Xero 
 |---|---|
 | `offline_access` | **Mandatory** — without this, no `refresh_token` is issued and the integration breaks after 30 minutes |
 | `accounting.transactions` | POST/GET on Invoices, Credit Notes, Bank Transactions |
-| `accounting.contacts` | Find/create the Contact each Invoice is associated with (the customer, or a generic per-channel umbrella Contact like "Squarespace customer") |
+| `accounting.contacts` | Find/create the Contact each transaction is associated with (the customer, or a generic per-channel umbrella Contact like "Squarespace customer") |
 | `accounting.settings.read` | List Accounts (chart of accounts), Tracking Categories, Tax Rates — read-only is sufficient |
-| `accounting.journals.read` | Optional. Useful for forensic drift-detection (reading the underlying double-entry journals behind an invoice) |
+| `accounting.journals.read` | Optional. Useful for forensic drift-detection (reading the underlying double-entry journals behind a transaction) |
 | `openid profile email` | Only if lbkmk's UI shows "connected to Xero as: <name>". Otherwise skip — keeps the consent screen tighter |
 
 Crucially, lbkmk should **not** request `accounting.transactions` write-scope and `accounting.settings` write-scope unless they're actively used — the system never writes to the chart of accounts or to tracking-category definitions; those are owner-administered in the Xero UI.
@@ -100,7 +100,7 @@ Per-tenant secrets (there will be exactly one tenant for LBK in v1):
 - `access_token` — cached in process memory or the DB (encrypted), refreshed proactively at ~25 minutes of age (5-minute safety margin before the 30-minute expiry)
 - `webhook_signing_key` — env var, server-only secret store (separate from OAuth client_secret)
 
-The Phoenix process should pre-warm the access token on boot and refresh **eagerly** rather than on-demand: a token that expires mid-POST during invoice posting forces a retry and burns the idempotency window. A simple background task that refreshes at `expires_at - 5 minutes` is enough.
+The Phoenix process should pre-warm the access token on boot and refresh **eagerly** rather than on-demand: a token that expires mid-POST during transaction posting forces a retry and burns the idempotency window. A simple background task that refreshes at `expires_at - 5 minutes` is enough.
 
 ## Key concepts / data model
 
@@ -109,10 +109,10 @@ Xero's resource graph relevant to lbkmk:
 | Xero resource | lbkmk mapping | Notes |
 |---|---|---|
 | **Organisation (Tenant)** | One per LBK Xero account | The container for everything. Identified by `tenantId` GUID. Sent as `Xero-tenant-id: <guid>` header on **every** API call. Different Xero plans (Starter, Standard, Premium, Cashbook, etc.) have different feature sets; LBK needs at minimum a plan that supports **tracked inventory** and **multi-currency** — typically Premium. ([accounting-overview][accounting-overview]) |
-| **Contact** (`ContactID` GUID) | Customer for each Invoice | An Invoice must reference a Contact. lbkmk has two reasonable patterns: (a) **per-channel umbrella Contact** — one Contact named e.g. "Squarespace customer", reused for every Squarespace-originated invoice; minimises PII and contact-list bloat; (b) **per-real-customer Contact** — create or find a Contact per email address, so Xero reports show customer-level revenue. Recommendation: start with (a), evaluate (b) later. Avoids GDPR friction and avoids spamming the Xero contacts list with one-off ticket buyers. ([invoices][invoices]) |
+| **Contact** (`ContactID` GUID) | Customer for each transaction | A BankTransaction must reference a Contact. lbkmk has two reasonable patterns: (a) **per-channel umbrella Contact** — one Contact named e.g. "Squarespace customer", reused for every Squarespace-originated transaction; minimises PII and contact-list bloat; (b) **per-real-customer Contact** — create or find a Contact per email address, so Xero reports show customer-level revenue. Recommendation: start with (a), evaluate (b) later. Avoids GDPR friction and avoids spamming the Xero contacts list with one-off ticket buyers. ([invoices][invoices]) |
 | **Invoice** (`InvoiceID` GUID + `InvoiceNumber` string) | The Xero output of one approved Sale Event (alternative to BankTransaction; not used in v1) | `Type=ACCREC` (Accounts Receivable, i.e. "sales invoice"). Carries a `Reference` field — lbkmk uses `lbkmk:<sale_event.id>` here as a **soft idempotency key** that survives even if the Xero `Idempotency-Key` header window has expired. Has its own line items, currency, tax rates, tracking categories. v1 uses `RECEIVE` BankTransactions instead; Invoices remain the fallback if the owner later switches workflows. ([invoices][invoices]) |
-| **Invoice Status** | reconciliation-state side-effect | Lifecycle: `DRAFT` → `SUBMITTED` → `AUTHORISED` → `PAID` (or `VOIDED` / `DELETED`). lbkmk posts directly as `AUTHORISED` because owner-approval already happened in lbkmk's UI; a `DRAFT` invoice would not decrement inventory. Only invoices in `AUTHORISED` and `PAID` impact tracked inventory. ([invoices][invoices]) |
-| **LineItem** (within an Invoice) | Mirrors lbkmk's `Line Item` rows | Carries `ItemCode` (the Xero Item's user-defined code — see Inventory Item below), `Description`, `Quantity`, `UnitAmount`, `AccountCode`, `TaxType`, `DiscountRate`, optional `Tracking[]` (up to 2 categories). **If `ItemCode` references a tracked Item, Xero decrements the Item's stock on invoice authorisation.** ([invoices][invoices]) |
+| **Invoice Status** | reconciliation-state side-effect (for `ACCREC` Invoices; not used in v1) | Lifecycle: `DRAFT` → `SUBMITTED` → `AUTHORISED` → `PAID` (or `VOIDED` / `DELETED`). For `RECEIVE` BankTransactions, status is not applicable — the transaction is effective immediately. ([invoices][invoices]) |
+| **LineItem** (within a BankTransaction) | Mirrors lbkmk's `Line Item` rows | Carries `ItemCode` (the Xero Item's user-defined code — see Inventory Item below), `Description`, `Quantity`, `UnitAmount`, `AccountCode`, `TaxType`, `DiscountRate`, optional `Tracking[]` (up to 2 categories). **If `ItemCode` references a tracked Item, Xero decrements the Item's stock on `RECEIVE` BankTransaction creation.** ([banktransactions][banktransactions]) |
 | **Item** (`ItemID` GUID + `Code` string) | `Inventory Item` (canonical sellable thing) | The Xero catalog row. Two flavours: **tracked** (Xero maintains `QuantityOnHand` and `TotalCostPool`; uses Inventory Asset Account; auto-decrements on invoice authorisation) and **untracked** (just a name + default price). LBK's merch and tickets should be **tracked** items where stock matters. `Code` is the user-defined SKU-like identifier (e.g. `TSHIRT-RED-L`, `TICKET-SPRING2026-ADULT`) and lines up directly with `docs/domain-model.md` §4.2 Inventory Item identity. **`QuantityOnHand` and `TotalCostPool` are read-only via the Items endpoint** — they can only change as a side-effect of a sales transaction (ACCREC Invoice / RECEIVE BankTransaction → decrement) or a purchase transaction (ACCPAY Invoice / SPEND BankTransaction → increment). ([items][items], [tracked-inventory][tracked-inventory]) |
 | **Account** (`AccountID` GUID + `Code` string, e.g. `200`) | (referenced from each line item) | The chart-of-accounts row each line item posts to. For LBK: a **revenue account** per product category (e.g. `200` = Sales-Merch, `210` = Sales-Tickets), and a **Stripe-fee account** (`410` = Bank Fees-Stripe) for the fee leg of payouts. The `Item` resource carries a default `SalesDetails.AccountCode`, so line items that use `ItemCode` inherit the right account automatically. ([invoices][invoices]) |
 | **Tracking Category** + **Tracking Option** | Optional dimension on each line item | Free-form custom dimensions (e.g. Category="Event", Options="Spring Convention 2026" / "Autumn Convention 2026") — lets LBK slice revenue by event without creating a separate Account per event. Up to **2 active tracking categories** per organisation, each with multiple options. Each line item carries up to 2 `Tracking[]` references. Strongly recommended for LBK so per-event revenue reporting works without polluting the Items catalog with date-stamped variants of every SKU. ([invoices][invoices]) |
@@ -121,18 +121,18 @@ Xero's resource graph relevant to lbkmk:
 | **BankTransaction** | Stripe / Square bank-feed lines | Created by Xero's bank-feed integration, **not** by lbkmk. Each represents one settled deposit (a Stripe payout, a Square payout, a fee debit). lbkmk treats these as the **counter-party** of the invoices it creates — the `docs/domain-model.md` Drift detection works by summing AUTHORISED+PAID Invoices over a window and comparing to the BankTransaction sum. |
 | **Webhook** (subscription) | Optional inbound channel | Xero can push `Contact` and `Invoice` create/update events to lbkmk. Limited coverage (no `Item`, no `BankTransaction`, no `CreditNote` events as of retrieval date) — see Webhooks section. Mostly out of scope for lbkmk v1: lbkmk is the source of truth for the invoices it created, and reconciliation against bank feeds happens via scheduled polling, not push. |
 
-**Identifier conventions:** Xero uses **GUIDs** for primary keys on every resource (`InvoiceID`, `ContactID`, `ItemID`, `AccountID`, `TrackingCategoryID`, `TenantID`) and **user-defined strings** for the human-facing codes (`InvoiceNumber`, `Code` on Items, `Code` on Accounts). When persisting Xero IDs on the lbkmk side, store the GUID — names and codes can be edited by the owner in the Xero UI without notice; GUIDs cannot.
+**Identifier conventions:** Xero uses **GUIDs** for primary keys on every resource (`BankTransactionID`, `InvoiceID`, `ContactID`, `ItemID`, `AccountID`, `TrackingCategoryID`, `TenantID`) and **user-defined strings** for the human-facing codes (`Code` on Items, `Code` on Accounts). When persisting Xero IDs on the lbkmk side, store the GUID — names and codes can be edited by the owner in the Xero UI without notice; GUIDs cannot.
 
-**Monetary convention:** Xero uses **decimal strings** (`"1800.00"`, `"225.00"`) **in the invoice's currency** — opposite of Stripe/TicketTailor's minor-unit integers, same shape as Squarespace's decimal-string totals. Normalisation on the lbkmk side: convert internal minor-unit integers to a 2-decimal string at the Xero API boundary, never store decimals internally. Unit prices can opt in to 4-decimal precision by appending `?unitdp=4` to the request URL.
+**Monetary convention:** Xero uses **decimal strings** (`"1800.00"`, `"225.00"`) **in the transaction's currency** — opposite of Stripe/TicketTailor's minor-unit integers, same shape as Squarespace's decimal-string totals. Normalisation on the lbkmk side: convert internal minor-unit integers to a 2-decimal string at the Xero API boundary, never store decimals internally. Unit prices can opt in to 4-decimal precision by appending `?unitdp=4` to the request URL.
 
 ## Webhooks / events
 
-Xero webhooks are **lower-priority** for lbkmk than the channel-side webhooks because Xero is downstream of lbkmk's writes — lbkmk already knows when it created an invoice. But there are two scenarios where they matter:
+Xero webhooks are **lower-priority** for lbkmk than the channel-side webhooks because Xero is downstream of lbkmk's writes — lbkmk already knows when it created a transaction. But there are two scenarios where they matter:
 
-1. **Out-of-band edits** — if the owner edits an AUTHORISED invoice directly in the Xero UI (changes the customer, voids it, etc.), lbkmk has no other way to learn about the change. A webhook subscription on Invoice updates closes that gap.
-2. **Detecting voids and payments applied** — if Xero receives a bank-feed deposit and the owner reconciles it manually against a lbkmk-created invoice, the invoice transitions to `PAID`. lbkmk doesn't need to know this for its own correctness but the owner-facing dashboard benefits from showing "paid in Xero" status.
+1. **Out-of-band edits** — if the owner edits a BankTransaction directly in the Xero UI (changes the customer, deletes it, etc.), lbkmk has no other way to learn about the change. A webhook subscription on Invoice updates closes that gap for the `ACCREC` fallback; for `RECEIVE` BankTransactions, polling is the only option.
+2. **Detecting payments applied** — if Xero receives a bank-feed deposit and the owner reconciles it manually, the dashboard benefits from showing "reconciled in Xero" status. For the `RECEIVE` flow, this is less relevant because reconciliation happens at the transfer level, not per-transaction.
 
-For v1, lbkmk **may skip Xero webhooks entirely** and rely on scheduled polling (every N minutes, `GET /Invoices?If-Modified-Since=<last_sweep>` + `where=Status="VOIDED"` checks). Re-evaluate when out-of-band edits become an operational problem.
+For v1, lbkmk **may skip Xero webhooks entirely** and rely on scheduled polling (every N minutes, `GET /BankTransactions?If-Modified-Since=<last_sweep>`). Re-evaluate when out-of-band edits become an operational problem.
 
 ### Webhook coverage
 
@@ -189,7 +189,7 @@ Every Xero webhook delivery, including the initial validation check, is signed:
 
 If lbkmk's endpoint takes longer than 5 seconds, returns a non-2xx, or repeatedly fails signature validation, Xero **disables the webhook subscription**. The exact thresholds aren't published as numbers in the public docs, but third-party guides report Xero will retry briefly then disable ([xero-devblog-webhooks][xero-devblog-webhooks]). Recovery requires re-validating Intent to Receive from the Developer Portal.
 
-**Operational consequence:** lbkmk's webhook handler **must** acknowledge with `200` first, then process asynchronously in a background queue. Doing the `GET /Invoices/<id>` follow-up call synchronously inside the 5-second window is dangerous — that GET counts against the per-minute API limit (60 calls/min) and Xero's own latency can blow the budget.
+**Operational consequence:** lbkmk's webhook handler **must** acknowledge with `200` first, then process asynchronously in a background queue. Doing the `GET /BankTransactions/<id>` follow-up call synchronously inside the 5-second window is dangerous — that GET counts against the per-minute API limit (60 calls/min) and Xero's own latency can blow the budget.
 
 ### Idempotency on Xero-side webhooks
 
@@ -305,7 +305,7 @@ This double-layer is the right pattern for lbkmk because the `Idempotency-Key` w
 
 6. **Returning a non-empty body or any cookies in the webhook ACK response.** Xero's webhook spec is precise: 200 OK, **empty body, no cookies**. A response of `200 {"ok":true}` from a framework that auto-serialises JSON fails Intent to Receive — Xero will disable the subscription and the failure mode is silent until lbkmk notices missing events. ([xero-devblog-webhooks][xero-devblog-webhooks])
 
-7. **Doing the `GET /Invoices/<id>` follow-up call synchronously inside the 5-second webhook window.** That GET counts against the 60/min API budget per tenant, and Xero's own response latency on the GET can be hundreds of milliseconds. Under any load it's a coin-flip to fit; under sustained webhook bursts it fails. Acknowledge first (200, empty body), enqueue the GET in a background worker. ([xero-devblog-webhooks][xero-devblog-webhooks])
+7. **Doing the `GET /BankTransactions/<id>` follow-up call synchronously inside the 5-second webhook window.** That GET counts against the 60/min API budget per tenant, and Xero's own response latency on the GET can be hundreds of milliseconds. Under any load it's a coin-flip to fit; under sustained webhook bursts it fails. Acknowledge first (200, empty body), enqueue the GET in a background worker. ([xero-devblog-webhooks][xero-devblog-webhooks])
 
 8. **Using an account-default `Stripe-Version`-style mental model.** Xero has **no per-request version header**; the version is in the URL path (`/api.xro/2.0/...`). New fields appear over time without a version bump. lbkmk's parsers must tolerate unknown fields (ignore them) rather than reject the response. ([accounting-overview][accounting-overview])
 
@@ -319,7 +319,7 @@ This double-layer is the right pattern for lbkmk because the `Idempotency-Key` w
 
 13. **Posting one Xero transaction per Stripe-charge that double-counts Squarespace sales.** Squarespace's `order.create` and Stripe's `charge.succeeded` for the same customer are **two halves of one transaction** (`docs/domain-model.md` §4.2 Correlation). lbkmk must post **one** Xero BankTransaction per Correlation pair, not two. The current model has the Squarespace Sale Event carry the line items (the goods sold) and Stripe carry the payment side; the Xero transaction mirrors the Squarespace line items, **not** the Stripe gross. Double-posting would double inventory decrements and double revenue — and would not be caught by the bank feed reconciliation because the bank feed is a once-per-day net deposit.
 
-14. **Storing customer billing addresses and email addresses without GDPR review.** A Xero Invoice with `Contact.EmailAddress` set and `InvoiceAddresses[]` populated puts customer PII into Xero. The umbrella-Contact pattern avoids this. If LBK does want per-customer contacts, ensure Xero's contact retention aligns with LBK's GDPR posture (Xero retains organisation data per its plan terms, which may exceed UK GDPR's "no longer than necessary" expectation unless deletion is actively driven).
+14. **Storing customer billing addresses and email addresses without GDPR review.** A Xero BankTransaction with `Contact.EmailAddress` set puts customer PII into Xero. The umbrella-Contact pattern avoids this. If LBK does want per-customer contacts, ensure Xero's contact retention aligns with LBK's GDPR posture (Xero retains organisation data per its plan terms, which may exceed UK GDPR's "no longer than necessary" expectation unless deletion is actively driven).
 
 15. **Forgetting the 50-node-per-batch practical ceiling.** The 10MB request size limit ([api-limits][api-limits]) translates to ~50 transactions per batch request in practice. Bigger batches trigger timeouts even when they're well under 10MB. Backfill code must page at ~50.
 
@@ -349,7 +349,7 @@ This double-layer is the right pattern for lbkmk because the `Idempotency-Key` w
 
 11. **Where do Stripe processing fees live in the Xero books?** The Stripe direct feed brings in fee lines as separate transactions ([stripe-xero-integration][stripe-xero-integration]); lbkmk's `RECEIVE` BankTransaction posts gross revenue to the clearing account, leaving the fee to be expensed when the bank-feed line is reconciled. This matches how the owner already does it — fees are handled by the bank feed, not by lbkmk.
 
-12. **Currency handling for non-GBP sales.** Customer pays in USD via Stripe → Xero needs the invoice in USD with the date-of-posting FX rate ([xero-multi-currency][xero-multi-currency]). Multi-currency requires the Premium plan. **Resolution: confirm LBK's plan and confirm cross-currency volume.**
+12. **Currency handling for non-GBP sales.** Customer pays in USD via Stripe → Xero needs the transaction in USD with the date-of-posting FX rate ([xero-multi-currency][xero-multi-currency]). Multi-currency requires the Premium plan. **Resolution: confirm LBK's plan and confirm cross-currency volume.**
 
 13. **What happens when the owner manually edits an lbkmk-posted BankTransaction in Xero?** lbkmk has no way to detect this without webhooks. Without webhooks, the owner's edit silently diverges from lbkmk's view. The mitigation is to flag this as a documented "do not edit lbkmk transactions in Xero" convention plus an occasional reconciliation sweep that compares lbkmk's stored transaction payload to a fresh `GET /BankTransactions/<id>`. **Resolution: documented owner convention; v2 webhook-based detection.**
 
