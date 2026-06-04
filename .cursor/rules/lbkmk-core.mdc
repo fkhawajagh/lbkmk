@@ -1,0 +1,30 @@
+---
+description: lbkmk identity, anchor docs, and open-questions gate
+alwaysApply: true
+---
+
+# lbkmk core
+
+**lbkmk** reconciles multi-channel sales (Squarespace, Stripe, Square, TicketTailor), inventory, and itemized Xero invoicing so per-item revenue and stock are answerable beyond lump-sum bank feeds.
+
+**Current phase:** documentation and proposal (no Phoenix app in repo until `mix.exs` exists). Confirm against the tree before assuming otherwise.
+
+## Anchor documents
+
+- `docs/domain-model.md` — vocabulary, entities, business rules (source of truth for terms)
+- `docs/solution-proposal.md` — proposed solution shape
+
+## Open questions (blocking)
+
+Before design or implementation on any module, read `docs/domain-model.md` **§7 (vocabulary)** and **§8 (scope)**.
+
+- Do not start work blocked by an unresolved question unless the owner explicitly accepts the risk.
+- When planning, surface any open question that touches the feature area.
+- Tag questions with `blocks: <feature>` when known (see `CLAUDE.md`).
+
+## Stack notes
+
+- **Phoenix LiveView** — planned application stack.
+- **Ash Framework** — not in use; persistence is **Ecto** + `Repo` when code exists.
+
+For commands, document naming, handoffs, worktrees, and external-agent workflow, see **`CLAUDE.md`** — this rule does not duplicate that file.

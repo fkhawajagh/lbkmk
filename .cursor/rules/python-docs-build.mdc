@@ -1,0 +1,29 @@
+---
+description: Python conventions for the documentation build pipeline
+globs: scripts/**
+alwaysApply: false
+---
+
+# Python (doc build pipeline)
+
+The only application Python in this repo today is under `scripts/` (Mermaid pre-processing, Quarto/Pandoc rendering).
+
+## Tooling
+
+- **Python 3.14**
+- **`ruff`** — lint and format (not black)
+- **`uv`** — environments and packages
+
+## Type hints (modern syntax)
+
+- PEP 695 `type` aliases for aliases
+- `X | Y` unions (not `Union[X, Y]`)
+- Lowercase generics: `list[str]`, `dict[str, int]`
+- `str | None` (not `Optional[str]`)
+
+## Style
+
+- Read a file before editing; match existing structure in `scripts/`.
+- Validate paths; prefer explicit errors over silent failure.
+
+Broader shell and repo conventions: **`AGENTS.md`**.

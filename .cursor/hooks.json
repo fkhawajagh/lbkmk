@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": ".cursor/hooks/block-primary-tree-checkout.sh",
+        "matcher": "git\\s+(checkout|switch)\\b",
+        "failClosed": false
+      }
+    ],
+    "stop": [
+      {
+        "command": ".cursor/hooks/handoff-reminder.sh"
+      }
+    ]
+  }
+}

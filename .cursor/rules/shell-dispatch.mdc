@@ -1,0 +1,30 @@
+---
+description: Shell conventions for bin/ dispatch and workflow tooling
+globs: bin/**
+alwaysApply: false
+---
+
+# Shell tooling (`bin/`)
+
+Repo dispatch scripts (`bin/dispatch-kimi`, `bin/wf-log`, `bin/wf-extract-segment`) are **zsh**. Match existing style mechanically when editing.
+
+## Zsh
+
+- Shebang: `#!/usr/bin/env zsh`
+- Arrays are 1-indexed; use glob qualifiers and extended parameter expansion
+
+## Bash (if used elsewhere)
+
+- Shebang: `#!/usr/bin/env bash`
+- `set -euo pipefail`
+- Quote variables: `"${var}"`; use `local` in functions
+- Errors to stderr: `echo "Error: ..." >&2`
+
+## Dispatch changes
+
+When changing Kimi dispatch or external-agent behavior:
+
+- Read **`docs/external-agent-protocol.md`** (authoritative for execution mechanics)
+- Plans handed to external implementers must reference that protocol (see **`CLAUDE.md`**)
+
+Do not embed Cursor-specific instructions in dispatch scripts.
