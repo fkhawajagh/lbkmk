@@ -37,7 +37,7 @@ The decision: **what Xero document type and account structure should lbkmk use s
 ## Decision Drivers
 
 - **No double-counting.** The existing bank feeds must continue to work without duplicating revenue.
-- **Inventory decrement.** Every sale must decrement the relevant tracked (or untracked) Item's quantity.
+- **Inventory decrement.** Every sale must decrement the relevant tracked Item's quantity.
 - **Minimal owner workflow change.** The owner already has a working reconciliation habit; lbkmk should slot into it, not replace it.
 - **Itemized revenue.** The owner needs per-product, per-event revenue granularity that the bank feeds alone cannot provide.
 - **Fee separation.** Stripe and Square processing fees must remain clearly separated from gross revenue.
@@ -75,7 +75,7 @@ Chosen option: **Option C — `RECEIVE` BankTransactions (cash sale) to clearing
 ## Consequences
 
 - **Xero document type changes.** lbkmk posts `BankTransaction` with `Type: "RECEIVE"` instead of `Invoice` with `Type: "ACCREC"`. The `Reference` field carries `lbkmk:<sale_event.id>` for idempotency. The `BankAccount` is the Stripe or Square clearing account (a `Code`, not a `BankAccountID` — the clearing account must be an Account of type `CURRENT` or `BANK`).
-- **Inventory still decrements.** `RECEIVE` BankTransactions support `ItemCode` on line items, and Xero decrements tracked inventory on these exactly as it does for `ACCREC` Invoices (both are sales transactions in Xero's model). This is the load-bearing feature that makes Option C viable.
+- **Inventory still decrements.** `RECEIVE` BankTransactions support `ItemCode` on line items, and Xero decrements tracked inventory on these exactly as it does for `ACCREC` Invoices (both are sales transactions in Xero's model). This is the load-bearing feature that makes Option C viable. Requires tracked Items (`IsTrackedAsInventory: true`), which needs at least Xero Standard tier.
 - **Revenue accounts unchanged.** Each line item carries the same `AccountCode` mapping (merch → `4000`, tickets → `4010`, etc.) as it would on an Invoice. The revenue hits the P&L the same way.
 - **Owner workflow unchanged.** The owner continues to: (a) see itemized sales in the clearing account, (b) see the bulk deposit arrive via bank feed, (c) transfer the net from clearing to Novo, (d) reconcile the transfer. The only difference is that the itemized sales are now posted by lbkmk instead of entered manually.
 - **Reporting consideration.** The owner must use General Ledger or custom reports to see itemized revenue by product/event, because Xero's built-in "Sales Overview" report may filter to Invoices only. This is a training/docs item, not a code change.
