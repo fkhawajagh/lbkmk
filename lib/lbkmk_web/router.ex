@@ -20,8 +20,21 @@ defmodule LbkmkWeb.Router do
     get "/", PageController, :home
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", LbkmkWeb do
-  #   pipe_through :api
-  # end
+  scope "/api/v1", LbkmkWeb.API do
+    pipe_through :api
+
+    post "/sale-events", SaleEventController, :create
+    get "/sale-events", SaleEventController, :index
+    post "/xero-write-result", XeroWriteResultController, :create
+    post "/payouts", PayoutController, :create
+  end
+
+  scope "/", LbkmkWeb do
+    pipe_through :browser
+
+    live "/inbox", DashboardLive.Inbox
+    live "/events/:id", DashboardLive.EventDetail
+    live "/skus", DashboardLive.Skus
+    live "/inventory", DashboardLive.Inventory
+  end
 end
