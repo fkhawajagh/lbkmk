@@ -1,0 +1,36 @@
+---
+description: Phoenix, Ecto, and LiveView conventions when application code exists
+globs: "**/*.{ex,exs}"
+alwaysApply: false
+---
+
+# Elixir / Phoenix
+
+**Ash Framework is not in use.** Persistence is Ecto changesets and `Repo` only.
+
+## Architecture
+
+- **Contexts** (`Lbkmk.Ingest`, `Lbkmk.Reconciliation`, `Lbkmk.Inventory`, …) are the only public entry point into a domain. The web layer never calls `Repo` or schemas directly.
+- **Schemas:** `lib/lbkmk/<context>/<schema>.ex`
+- **LiveView:** `lib/lbkmk_web/live/<resource_singular>_live/<action>.ex` → `LbkmkWeb.<Resource>Live.<Action>` (Phoenix 1.8)
+- **Components:** function components in `lib/lbkmk_web/components/`
+- **Forms:** `Phoenix.Component.to_form/2` over changesets; `<.form for={@form}>`
+- **Router:** LiveView dashboard routes + controllers for webhook ingest (channels via Make)
+- **Errors:** changesets for validation; `{:ok, _} | {:error, _}` for domain rules
+- **Adapters:** `@behaviour` modules for external services; called from contexts, not controllers
+
+## Ingress
+
+Every external event ingestion is keyed on `(channel, external_event_id)` and must be harmless on re-delivery (`docs/domain-model.md` §6 rule 16).
+
+## Build validation (when `mix.exs` exists)
+
+```bash
+mix deps.get
+mix compile --warnings-as-errors
+mix format --check-formatted
+mix credo --strict
+mix test --trace
+```
+
+Until then, doc build only: `scripts/build-docs.sh`. Full architecture notes: **`CLAUDE.md`** → Architecture Conventions.

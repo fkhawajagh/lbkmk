@@ -1,0 +1,38 @@
+---
+description: Documentation naming, handoffs, and project-status conventions
+globs: docs/**
+alwaysApply: false
+---
+
+# Documentation and handoffs
+
+## Naming
+
+- **Anchor docs** (canonical, no date prefix): `domain-model.md`, `solution-proposal.md`
+- **Design / plan docs:** `{date}-{name}-design.md` (e.g. `2026-06-01-ingestion-pipeline-design.md`)
+- **Final PDFs:** `lbkmk-{name}-v{major}.{minor}.pdf`
+- **Review HTML:** no version in filename (e.g. `lbkmk-resilience-strategy.html`)
+- On revision: bump version in **filename and document body** (major.minor only)
+
+## Handoff bridges (`docs/.handoff/`)
+
+- Dated handoffs are **gitignored**; write to the **primary checkout’s** `docs/.handoff/` so the next session finds them after a worktree is removed.
+- Only `docs/.handoff/README.md` is committed.
+- After meaningful work (merged PR, mid-flight branch, decisions not in plan/PR/memory), write `docs/.handoff/YYYY-MM-DD-<branch-or-topic-slug>.md` — **do not commit** it.
+- If losing the worktree erases context the next session needs → **handoff**, not only `docs/.context/<feature>/`.
+
+See **`docs/.handoff/README.md`** for when to write and the document skeleton.
+
+## Per-feature process artifacts
+
+- `docs/.context/{feature}/` is gitignored transient material (checkpoints, review feedback). Distinct from handoffs.
+
+## Project status
+
+- `docs/project-status.yaml` is the machine-readable delivery record; hand-edit at phase start, stage/PR changes, and merge (see `CLAUDE.md` and `docs/plans/2026-06-02-project-status-yaml-design.md`).
+
+## Doc build
+
+```bash
+scripts/build-docs.sh   # domain-model + solution-proposal → docs/dist/
+```

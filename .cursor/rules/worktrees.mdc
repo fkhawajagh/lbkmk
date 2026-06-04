@@ -1,0 +1,36 @@
+---
+description: Git worktree isolation — never branch in the primary checkout
+alwaysApply: true
+---
+
+# Worktrees (hard rule)
+
+Multiple agents may use this repo concurrently. **Never check out a feature branch in the primary working tree** at `/Users/farouk/src/lbkmk`.
+
+## Required workflow
+
+1. Create a worktree before any non-trivial change (including docs-only branches):
+
+   ```bash
+   git worktree add .worktrees/<branch-name> -b <branch-name>
+   ```
+
+2. `cd` into `.worktrees/<branch-name>` and confirm:
+
+   ```bash
+   pwd
+   git branch --show-current
+   ```
+
+3. Perform all Read / Write / Edit / shell / `git` operations with paths rooted in **that worktree**, not the primary tree.
+
+4. When dispatching subagents or external sessions, pass the worktree path.
+
+## Primary tree (allowed only)
+
+- Read files and inspect git state
+- Create new worktrees
+
+**Not allowed in the primary tree:** branch checkout, commits, or file edits.
+
+`.worktrees/` is gitignored. Full convention: **`CLAUDE.md`** → Worktree Configuration.
