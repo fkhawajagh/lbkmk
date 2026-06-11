@@ -9,8 +9,8 @@ This directory is the **Cursor-only** layer for agent guidance. It does not repl
 | [`CLAUDE.md`](../CLAUDE.md) | Full project brief: identity, worktrees, open questions, architecture, external-agent workflow |
 | [`AGENTS.md`](../AGENTS.md) | Implementer discipline for plan execution (Kimi, subagents, external sessions) |
 | [`docs/domain-model.md`](../docs/domain-model.md) | Vocabulary and business rules; check §7–8 before feature work |
-| [`docs/external-agent-protocol.md`](../docs/external-agent-protocol.md) | Execution mechanics when running implementation plans |
-| [`bin/dispatch-kimi`](../bin/dispatch-kimi) | Kimi dispatch from the terminal (orchestrator-driven) |
+| [`docs/external-agent-protocol-local.md`](../docs/external-agent-protocol-local.md) | lbkmk-specific execution-mechanics addendum; the project-agnostic rules live in the shared `external-agent-protocol` skill |
+| [`bin/dispatch-kimi`](../bin/dispatch-kimi) | Kimi dispatch from the terminal (symlink to the shared `external-agent-protocol` toolkit's `dispatch-agent`) |
 
 **Do not** add Cursor-specific prose to `CLAUDE.md` or `AGENTS.md`. Put Cursor-only behavior here or under `~/.cursor/`.
 

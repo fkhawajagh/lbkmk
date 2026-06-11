@@ -89,7 +89,7 @@ The `.worktrees/` directory is gitignored. Each worktree gets its own isolated w
 **Rules that apply to every agent (main session and subagents):**
 
 - Create a worktree before starting any non-trivial change, including documentation-only edits on a branch — no exception for "small" changes.
-- `cd` into the worktree before doing any work, and confirm with `pwd` and `git branch --show-current`. The Bash tool persists the working directory across calls, so a single `cd` at the start keeps every subsequent command rooted in the worktree (`cd` within the repo's worktrees is permitted — see global "File Operations"). This mirrors the external-agent rule in `docs/external-agent-protocol.md` §2.2.
+- `cd` into the worktree before doing any work, and confirm with `pwd` and `git branch --show-current`. The Bash tool persists the working directory across calls, so a single `cd` at the start keeps every subsequent command rooted in the worktree (`cd` within the repo's worktrees is permitted — see global "File Operations"). This mirrors the worktree-scope rule in the `external-agent-protocol` skill's `rules/operating-constraints.md`.
 - All Read / Write / Edit / Bash operations must use absolute paths rooted at the worktree, not at the primary repo root.
 - When dispatching subagents (Kimi via `bin/dispatch-kimi`, external Claude sessions, in-process Sonnet via the `Agent` tool), pass the worktree path so the subagent operates inside it.
 - The only operations permitted in the primary working tree are: reading files, inspecting git state, and creating new worktrees. No branch checkout, no commits, no edits.
@@ -159,9 +159,9 @@ Distinct from the **Project Status** query above. That query is a live, human-fa
 
 When an implementation plan is handed off to a separately-orchestrated external agent (Claude- or Kimi-driven, not the main interactive session), the plan document **must** reference the standing External Agent Protocol. Add this line as the final paragraph of the plan, after task-specific instructions:
 
-> Follow the standing External Agent Protocol at `docs/external-agent-protocol.md` in addition to the task-specific instructions above.
+> Follow the standing External Agent Protocol (the `external-agent-protocol` skill) plus `docs/external-agent-protocol-local.md` in addition to the task-specific instructions above.
 
-The protocol at `docs/external-agent-protocol.md` consolidates worktree-scope rules, the no-push / no-PR closing protocol, in-flight checkpoint requirements, code-quality / style / security rules, the end-of-work self-review checklist (cross-module consistency diff, stale-reference sweep, UX/code contradiction sweep, self-Opus pass), branch hygiene, and the status-report template. Plan authors do not copy these rules into each plan — they reference the standing doc so updates apply uniformly.
+The shared `external-agent-protocol` skill consolidates project-agnostic rules (worktree-scope, the no-push / no-PR closing protocol, in-flight checkpoint requirements, code-quality / style, the end-of-work self-review checklist (cross-module consistency diff, stale-reference sweep, UX/code contradiction sweep, self-Opus pass), branch hygiene, and the status-report template). The local addendum at `docs/external-agent-protocol-local.md` carries lbkmk-specific constraints (Ecto-not-Ash persistence, idempotent ingress, the domain-model vocabulary and open-questions gate). Plan authors do not copy these rules into each plan; they reference the standing docs so updates apply uniformly.
 
 ### Choosing the implementer
 
@@ -178,7 +178,7 @@ In all four cases, the closing Opus review pipeline (integration-reviewer + buil
 
 ### Dispatch mechanics
 
-For **Kimi**: `bin/dispatch-kimi <plan_path> <worktree_path>` for the initial dispatch, then `bin/dispatch-kimi --review <feedback_path> <worktree_path>` for any review-round follow-up. Both modes generate a kickoff prompt that points Kimi at `CLAUDE.md`, the protocol, and the plan; both write a per-run log to `docs/.context/<branch>/kimi-run-<timestamp>.log`. Kimi-specific implementer notes are in protocol §15.
+For **Kimi**: `bin/dispatch-kimi <plan_path> <worktree_path>` for the initial dispatch, then `bin/dispatch-kimi --review <feedback_path> <worktree_path>` for any review-round follow-up. `bin/dispatch-kimi` is a symlink to `dispatch-agent` from the shared `external-agent-protocol` skill toolkit; lbkmk runs with all advanced features (segment dispatch, the per-segment review loop, plan mode) off in `.eap.toml` `[features]`, and any of them can be enabled later by flipping the relevant key and re-running the toolkit installer. Both modes generate a kickoff prompt that points Kimi at `CLAUDE.md`, the local addendum, and the plan; both write a per-run log to `docs/.context/<branch>/kimi-run-<timestamp>.log`. Kimi-specific implementer notes are in the shared skill's `rules/kimi-specific.md`.
 
 For an **external Claude session**: paste the plan into a fresh Claude Code session pointed at the worktree. The plan must end with the standing-pointer line above.
 
@@ -199,8 +199,9 @@ The glean asks: what surfaced here that should propagate beyond this single feat
 | Category | Destination |
 |---|---|
 | Plan-quality patterns (defects in the plan itself, missing context, ambiguous specs) | New file in `~/.claude/skills/writing-plans/lessons/<slug>.md` |
-| External-agent behaviour (rules the implementer should have followed) | New subsection in `docs/external-agent-protocol.md` (bump protocol version) |
-| Dispatch mechanics (Kimi / external-Claude bridge) | `bin/dispatch-kimi` itself |
+| External-agent behaviour, lbkmk-specific (rules the implementer should have followed) | New subsection in `docs/external-agent-protocol-local.md` |
+| External-agent behaviour, project-agnostic | New subsection in the shared `external-agent-protocol` skill's `rules/` (dotfiles PR) |
+| Dispatch mechanics (Kimi / external-Claude bridge) | `bin/dispatch-kimi` or the `external-agent-protocol` skill toolkit |
 | Orchestrator-side workflow (model routing, review pipeline, this workflow itself) | This section of `CLAUDE.md` or `~/.claude/CLAUDE.md` |
 | Deferred work / followups surfaced but not addressed in this PR (out-of-scope items, surfaced bugs, refactor candidates, tech debt) | GitHub issue, filed at PR-close with cross-reference to the closing report (see "Tracking Deferred Work" above) |
 
