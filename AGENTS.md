@@ -1,6 +1,6 @@
 # Project Instructions (External Agents)
 
-Operative instructions for non-Claude external agents (e.g. Kimi via `bin/dispatch-kimi`) executing work in this repository. This file mirrors the subset of `CLAUDE.md` and the user's global preferences that an external agent needs while implementing a plan. `CLAUDE.md` remains the authoritative project doc for Claude Code; `docs/external-agent-protocol.md` is authoritative for execution mechanics. When this file and either of those diverge in a way that affects the task, surface the divergence in the status report rather than guessing.
+Operative instructions for non-Claude external agents (e.g. Kimi via `bin/dispatch-kimi`) executing work in this repository. This file mirrors the subset of `CLAUDE.md` and the user's global preferences that an external agent needs while implementing a plan. `CLAUDE.md` remains the authoritative project doc for Claude Code; the shared `external-agent-protocol` skill plus `docs/external-agent-protocol-local.md` are authoritative for execution mechanics. When this file and either of those diverge in a way that affects the task, surface the divergence in the status report rather than guessing.
 
 ## Critical: No Assumptions
 
@@ -44,7 +44,7 @@ Operative instructions for non-Claude external agents (e.g. Kimi via `bin/dispat
 
 - Shebang `#!/usr/bin/env zsh`. Arrays are 1-indexed.
 - Use glob qualifiers for file matching and extended parameter expansion.
-- The repo's dispatch tooling (`bin/dispatch-kimi`, `bin/wf-log`, `bin/wf-extract-segment`) is zsh — match its existing style mechanically when touching it.
+- `bin/dispatch-kimi` is a symlink to the shared `external-agent-protocol` skill's `dispatch-agent` (zsh). It is upstream tooling, not repo-local: do not edit it in place. Changes to dispatch mechanics belong in the skill toolkit, not in this repo.
 
 ### Python (documentation build pipeline)
 
@@ -108,4 +108,4 @@ Session-end handoffs are written to the gitignored `docs/.handoff/YYYY-MM-DD-<br
 
 ## External Agent Protocol
 
-When executing an implementation plan handed off by the orchestrator, follow the standing External Agent Protocol at `docs/external-agent-protocol.md`. It consolidates worktree-scope rules, the no-push / no-PR closing protocol, in-flight (and segment-structural) checkpoints, code-quality / style / security rules, the end-of-work self-review checklist, branch hygiene, and the status-report format. The protocol is authoritative for execution mechanics; this file is the agent-side conventions summary.
+When executing an implementation plan handed off by the orchestrator, follow the standing External Agent Protocol (the `external-agent-protocol` skill) plus `docs/external-agent-protocol-local.md`. The shared skill consolidates project-agnostic rules (worktree-scope, the no-push / no-PR closing protocol, in-flight checkpoints, code-quality / style, the end-of-work self-review checklist, branch hygiene, and the status-report format); the local addendum carries lbkmk-specific constraints. The protocol is authoritative for execution mechanics; this file is the agent-side conventions summary.

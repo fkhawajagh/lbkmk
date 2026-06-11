@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Shell tooling (`bin/`)
 
-Repo dispatch scripts (`bin/dispatch-kimi`, `bin/wf-log`, `bin/wf-extract-segment`) are **zsh**. Match existing style mechanically when editing.
+`bin/dispatch-kimi` is a symlink to the shared `external-agent-protocol` skill's `dispatch-agent`: upstream tooling, not repo-local, so do not edit it in place. Any other scripts added under `bin/` are **zsh** by default; match the conventions below.
 
 ## Zsh
 
@@ -24,7 +24,7 @@ Repo dispatch scripts (`bin/dispatch-kimi`, `bin/wf-log`, `bin/wf-extract-segmen
 
 When changing Kimi dispatch or external-agent behavior:
 
-- Read **`docs/external-agent-protocol.md`** (authoritative for execution mechanics)
-- Plans handed to external implementers must reference that protocol (see **`CLAUDE.md`**)
+- Dispatch mechanics live in the shared `external-agent-protocol` skill toolkit (`~/.dotfiles/skills/external-agent-protocol/`), not in this repo. Change them there.
+- lbkmk-specific execution rules live in **`docs/external-agent-protocol-local.md`**; plans handed to external implementers must reference the standing protocol (see **`CLAUDE.md`**)
 
 Do not embed Cursor-specific instructions in dispatch scripts.

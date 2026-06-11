@@ -11,7 +11,7 @@ Write handoffs to the **primary checkout's** `docs/.handoff/` — the main worki
 - every session reads the same location regardless of which worktree it ran in, and
 - the doc survives a feature worktree's deletion after merge.
 
-Do **not** `git add` a handoff, and never `git add -f` to force one in — that is a protocol violation (see `docs/external-agent-protocol.md` §2.5).
+Do **not** `git add` a handoff, and never `git add -f` to force one in — that is a protocol violation (see the `external-agent-protocol` skill's `rules/operating-constraints.md`, the no-`git add`-of-gitignored rule).
 
 This is distinct from `docs/.context/{feature}/` (the multi-agent pipeline's transient per-feature process artifacts), which is also gitignored but scoped to a single feature worktree.
 
